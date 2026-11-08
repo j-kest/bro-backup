@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('index') }}">← Back</a></p>
+<h1>Restore from {{ d.name }}</h1>
+<p class="sub">Your files go to the <code>restore</code> folder inside your bro-backup folder. Your current data is never overwritten.</p>
+{% if busy %}<div class="flash">Busy: {{ busy }}…</div>{% endif %}
+<section>
+  <form method="post" action="{{ url_for('dest_restore_test', dest_id=d.id) }}" style="float:right">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Run a restore test</button></form>
+  <p class="muted">A restore test restores a few random files to a temporary folder, verifies them and compares them with your originals. Nothing is overwritten.</p>
+  {% if disk %}
+    <div class="banner ok" style="font-weight:400">Restoring from the <strong>disk</strong>{% if disk_info %} copied by {{ disk_info.from }} on {{ disk_info.created|ltime }}{% endif %}: fast, no internet needed. <code>{{ disk }}</code>
+      <form class="inline" method="post" action="{{ url_for('dest_restore_source', dest_id=d.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Use the internet instead</button></form></div>
+  {% elif disks %}
+    {% for x in disks %}
+    <div class="banner warn" style="font-weight:400">A disk with your backup at {{ d.name }} is connected (copied by {{ x.from }} on {{ x.created|ltime }}, {{ x.size|bytes }}).
+      <form class="inline" method="post" action="{{ url_for('dest_restore_source', dest_id=d.id) }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="path" value="{{ x.path }}">
+        <button>Restore from the disk</button></form></div>
+    {% endfor %}
+  {% endif %}
+  {% if err %}
+    <p class="err">Could not load the versions:</p><pre class="err">{{ err }}</pre>
+  {% elif not snaps %}
+    <p class="muted">No versions yet.</p>
+  {% else %}
+  <table>
+    <tr><th>Version</th><th>Time</th><th class="hide-sm">Folder</th><th></th></tr>
+    {% for x in snaps %}
+    <tr>
+      <td><code>{{ x.short_id or x.id[:8] }}</code>
+        {% if (x.short_id or x.id[:8]) in suspicious %}<br><span class="badge err-b">suspicious</span>
+        {% elif (x.short_id or x.id[:8]) in before %}<br><span class="badge ok">last before the alarm</span>{% endif %}</td>
+      <td>{{ x.time|ltime }}</td>
+      <td class="hide-sm"><span class="muted">{% if x.src %}{{ x.src }}{% else %}{% for p in x.paths %}{{ p.replace('/nas/', '') }}{% if not loop.last %}, {% endif %}{% endfor %}{% endif %}</span></td>
+      <td><form class="inline" method="post" action="{{ url_for('dest_restore', dest_id=d.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <input type="hidden" name="snapshot" value="{{ x.id }}"><button class="ghost">Restore all</button></form>
+          <a class="btn" href="{{ url_for('dest_browse', dest_id=d.id, snap=x.id) }}">Browse</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+</section>
+
+<section id="integrity">
+  <h2>Integrity of your backup at {{ d.name }}</h2>
+  {% set fc = d.full_check %}
+  <p class="muted">Every week BRO Backup reads 2% of your backup at your bro. A full check reads all of it, so it takes as long as a full restore.</p>
+  {% if fc %}
+    {% if fc.ok %}<p class="ok">{{ 'Full check' if fc.full else 'Check' }} on {{ fc.at|ltime }}: no errors{% if fc.repaired %}, after a repair{% endif %}.</p>
+    {% else %}
+      <p class="err">{{ 'Full check' if fc.full else 'Weekly check' }} on {{ fc.at|ltime }} found damage{% if fc.packs %}: {{ fc.packs|length }} damaged data file(s){% endif %}.</p>
+      {% if fc.hardware %}<p class="warn">This kind of damage is usually caused by a disk or memory problem at your bro. Ask him to check his disks and run a scrub first, otherwise it comes back.</p>{% endif %}
+      {% if fc.repair_error %}<p class="err">The last repair stopped: {{ fc.repair_error }}</p>{% endif %}
+      {% if fc.packs %}
+      <p>Repair follows restic's own procedure: it removes the damaged files at your bro, sends the missing data again from this NAS, removes from old versions what can no longer be recovered, and checks everything again. Files that no longer exist on this NAS can be lost from old versions.</p>
+      <form method="post" action="{{ url_for('dest_repair', dest_id=d.id) }}" data-confirm="Repair the backup at {{ d.name }} now?">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button>Repair</button></form>
+      {% endif %}
+      <details><summary>details</summary><pre class="muted">{{ fc.error }}</pre></details>
+    {% endif %}
+    {% if d.repair_log %}<details><summary>last repair</summary><pre class="muted">{{ d.repair_log|join('\n') }}</pre></details>{% endif %}
+  {% endif %}
+  <form method="post" action="{{ url_for('dest_full_check', dest_id=d.id) }}" style="margin-top:10px">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Run a full check</button></form>
+</section>
+{% endblock %}

@@ -1,0 +1,53 @@
+# BRO Backup lab: two bros on one computer, for testing without a NAS.
+# Start it with lab.ps1 (Windows, macOS or Linux with PowerShell 7 and Docker).
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: bro-lab
+
+x-bro: &bro
+  image: ${BRO_IMAGE:-bro-backup:lab}
+  restart: unless-stopped
+  init: true
+  environment:
+    TZ: ${TZ:-Europe/Brussels}
+    SLOW_LOOP_SECONDS: "30"   # faster seed and key copy checks than on a real NAS
+    SPEED_SECONDS: "5"
+
+services:
+  alice:
+    <<: *bro
+    hostname: alice
+    build:                     # built once, bob uses the same image
+      context: ..
+      dockerfile: app/Dockerfile
+    ports: ["127.0.0.1:8481:8484"]
+    networks: {lab: {ipv4_address: 172.29.71.11}}
+    volumes:
+      - ./alice/data:/data
+      - ./alice/nas:/nas:ro
+      - ./usb:/seed            # the "external disk", shared by both
+
+  bob:
+    <<: *bro
+    hostname: bob
+    ports: ["127.0.0.1:8482:8484"]
+    networks: {lab: {ipv4_address: 172.29.71.12}}
+    volumes:
+      - ./bob/data:/data
+      - ./bob/nas:/nas:ro
+      - ./usb:/seed
+
+  # Catches every email BRO Backup sends. Web page: http://localhost:8025
+  # In BRO Backup: mail server "mail", port 1025, security "None".
+  mail:
+    image: axllent/mailpit:v1.31.6
+    restart: unless-stopped
+    ports: ["127.0.0.1:8025:8025"]
+    networks: [lab]
+
+# Fixed addresses: after a restart of Docker each bro still finds the other at the same place,
+# even without the internet relays.
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.29.71.0/24

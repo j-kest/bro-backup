@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+{% if kind == 'dest' %}
+<h1>Stop backing up to {{ name }}</h1>
+<p class="sub">Your data is then no longer stored at {{ name }}.</p>
+<section style="max-width:620px">
+  <p><strong>What happens</strong></p>
+  <ul>
+    <li>No more backups go to {{ name }}{% if d.remote_usage %}. You now have {{ d.remote_usage|bytes }} there{% endif %}.</li>
+    <li>You can no longer restore anything from {{ name }}, not even after a crash.
+      {% if other_dests %}Your backups at {{ other_dests|join(', ') }} stay as they are.{% else %}
+      <span class="err">This is your only bro: after this, nobody has a copy of your data.</span>{% endif %}</li>
+    <li>{{ name }} gets a message. If he is offline, this NAS keeps trying for 30 days.</li>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label class="check"><input type="checkbox" name="ask_delete" value="1" checked> Ask {{ name }} to delete my backups</label>
+    <p class="muted" style="margin:0 0 8px 26px">He gets a week to change his mind, or decides himself if his NAS keeps backups append-only. They are encrypted: he cannot read them either way.</p>
+    {% if linked %}
+    <label class="check"><input type="checkbox" name="also_receiver" value="1" checked> Also stop storing {{ name }}'s backups here</label>
+    <p class="muted" style="margin:0 0 8px 26px">He backs up to you too ({{ linked_usage|bytes }}). His data stays on your NAS until you delete it on the overview.</p>
+    {% endif %}
+    <label>Type <strong>{{ name }}</strong> to confirm<input type="text" name="confirm" required autocomplete="off"></label>
+    {% include "_reauth.html" %}
+    <p><button class="danger">Stop backing up to {{ name }}</button>
+      <a class="btn ghost" href="{{ url_for('index') }}">Cancel</a></p>
+  </form>
+</section>
+{% else %}
+<h1>Stop storing {{ name }}'s backups</h1>
+<p class="sub">{{ name }} can then no longer back up to your NAS.</p>
+<section style="max-width:620px">
+  <p><strong>What happens</strong></p>
+  <ul>
+    <li>His login on your NAS stops working right away, and the copy of his keys is deleted.</li>
+    <li>{% if linked %}You back up to him too: that continues, and he is told right away.{% else %}His NAS tells him at its next check, within a few hours.{% endif %}</li>
+    <li>His encrypted backups ({{ usage|bytes }}) {% if r.accepted %}stay on your NAS until you delete them, unless you choose that below{% else %}do not exist yet: his code was never used{% endif %}.</li>
+  </ul>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    {% if usage %}<label class="check"><input type="checkbox" name="delete_data" value="1"> Delete his backups now ({{ usage|bytes }})</label>
+    <p class="muted" style="margin:0 0 8px 26px">Only if you are sure he has another copy. This cannot be undone.</p>{% endif %}
+    {% if r.accepted %}<label>Type <strong>{{ name }}</strong> to confirm<input type="text" name="confirm" required autocomplete="off"></label>{% endif %}
+    {% if usage %}{% with reauth_optional=True, reauth_hint="only to delete his backups" %}{% include "_reauth.html" %}{% endwith %}{% endif %}
+    <p><button class="danger">{% if r.accepted %}Stop storing {{ name }}'s backups{% else %}Cancel the code{% endif %}</button>
+      <a class="btn ghost" href="{{ url_for('index') }}">Cancel</a></p>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

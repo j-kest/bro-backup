@@ -1,0 +1,12 @@
+services:
+  bro-backup:
+    image: ghcr.io/j-kest/bro-backup:1.0
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Europe/Brussels
+    ports:
+      - "8484:8484"
+    volumes:
+      - /mnt/POOL/bro-backup:/data
+      - /mnt/POOL:/nas:ro,rslave        # rslave: ZFS snapshots become visible in the app

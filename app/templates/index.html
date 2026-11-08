@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ s.name }}</h1>
+<p class="sub">Backup every night at {{ "%02d"|format(s.backup_hour) }}:00 · {{ s.sources|length }} folder(s) selected</p>
+
+{% if not ready %}
+  <div class="banner warn">Setting up the connection… refresh the page in half a minute.</div>
+{% elif not s.sources %}
+  <div class="banner err">You have not selected any folders yet. <a href="{{ url_for('settings_page') }}">Choose them in Settings.</a></div>
+{% elif dests|selectattr('mode', 'equalto', 'hold')|list %}
+  <div class="banner warn">Recovered. Backups are paused until you have restored your files.</div>
+{% elif problems %}
+  <div class="banner err">Problem with {{ problems|length }} bro(s). See below.</div>
+{% elif not dests %}
+  <div class="banner warn">No bro paired yet. Create a code below or paste one.</div>
+{% elif dests|selectattr('last_ok')|list|length == dests|length %}
+  <div class="banner ok">All good. Your data is safe with {{ dests|length }} bro(s).</div>
+{% endif %}
+{% if pause %}
+  <div class="banner warn">Backups are paused {% if pause.until %}until {{ pause.until|ltime }}{% else %}until you resume them{% endif %}.
+    Backups from your bros to this NAS go on as usual.
+    <form class="inline" method="post" action="{{ url_for('resume_backups') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button>Resume now</button></form></div>
+{% endif %}
+{% if alarm %}
+  <div class="banner err">Possible ransomware: the backup of {{ alarm.at|ltime }} looks like files were encrypted or deleted.
+    Nothing is cleaned up at your bros until you have looked: older versions stay.
+    <ul style="font-weight:400;margin:8px 0">{% for r in alarm.reasons[:6] %}<li>{{ r }}</li>{% endfor %}</ul>
+    {% if alarm.examples %}<details style="font-weight:400"><summary>Examples</summary><ul>{% for x in alarm.examples %}<li><code>{{ x }}</code></li>{% endfor %}</ul></details>{% endif %}
+    <p style="font-weight:400;margin:8px 0">Check your files first. To get them back: <strong>Restore</strong> next to a bro, and pick a version marked "last before the alarm".</p>
+    <form method="post" action="{{ url_for('alarm_clear') }}" style="font-weight:400">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      Was this you (a big reorganisation, for example)?
+      <input type="password" name="current_pw" placeholder="Your password" autocomplete="current-password" required style="max-width:200px">
+      <button class="ghost">This was me</button></form></div>
+{% endif %}
+{% if space and space.level == 'err' %}
+  <div class="banner err">The disk is almost full: {{ space.free|bytes }} free of {{ space.total|bytes }}. Backups of your bros (and maybe your own) will fail soon. Free up space, enlarge the dataset or its quota, or give bros less space.</div>
+{% elif space and space.level == 'warn' %}
+  <div class="banner warn">The disk is filling up: {{ space.free|bytes }} free of {{ space.total|bytes }} ({{ (space.used_share * 100)|round|int }}% used).</div>
+{% elif space and space.overcommitted %}
+  <div class="banner warn">You gave bros more space than is free: they may still store {{ space.promised|bytes }}, but only {{ space.free|bytes }} is free.</div>
+{% endif %}
+{% if update %}
+  <div class="banner warn">BRO Backup {{ update.version }} is available (this NAS runs {{ version }}).
+    <a href="{{ update.url }}" rel="noopener noreferrer" target="_blank">What changed</a> ·
+    <a href="{{ source_url }}#updating" rel="noopener noreferrer" target="_blank">How to update</a>
+    <form method="post" action="{{ url_for('update_dismiss') }}" style="display:inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Hide</button></form></div>
+{% endif %}
+{% if not has_rc %}
+  <div class="banner warn">You do not have a recovery code yet. <a href="{{ url_for('settings_page') }}#recovery">Create one in Settings</a>, otherwise you cannot restore anything after a crash.</div>
+{% endif %}
+
+{% if s.sources %}
+<section class="safety">
+  <div class="safety-head">
+    <div class="safety-score {{ safety.level }}" aria-label="Safety score">{{ safety.score }}<small>/100</small></div>
+    <div style="flex:1">
+      <h2 style="margin:0">How safe is your data? <span class="{{ safety.level }}">{{ safety.label }}</span></h2>
+      <div class="safety-bar" role="img" aria-label="{{ safety.score }} out of 100"><span class="{{ safety.level }}" style="width:{{ safety.score }}%"></span></div>
+    </div>
+  </div>
+  {% if safety.todo %}
+  <ul class="safety-todo">
+    {% for i in safety.todo[:3] %}<li><a href="{{ url_for(i.link) }}">{{ i.fix }}</a> <span class="muted">(+{{ i.points }})</span></li>{% endfor %}
+  </ul>
+  {% endif %}
+  <details><summary class="muted">How the score is made</summary>
+    <ul class="safety-list">{% for i in safety.checks %}<li class="{{ 'ok' if i.ok else 'muted' }}">{{ '✓' if i.ok else '·' }} {{ i.text }} <span class="muted">({{ i.points }})</span></li>{% endfor %}</ul>
+    <p class="muted">Based on the 3-2-1 rule: three copies, one of them far away. Your NAS is one copy, every bro with a backup of the last two days another.</p>
+  </details>
+</section>
+{% endif %}
+
+<section>
+  <div class="section-head">
+    <h2>My backups at bros</h2>
+    {% if dests and not pause %}
+    <form class="inline pause" method="post" action="{{ url_for('pause_backups') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label class="sr-only" for="pause-hours">Pause for</label>
+      <select name="hours" id="pause-hours">
+        <option value="1">for 1 hour</option><option value="4">for 4 hours</option>
+        <option value="24">for 24 hours</option><option value="0">until I resume</option>
+      </select>
+      <button class="ghost">Pause backups</button></form>
+    {% endif %}
+  </div>
+  {% if dests %}
+  <table>
+    <tr><th>Bro</th><th>Status</th><th class="hide-sm">Space at bro</th><th></th></tr>
+    {% for d in dests %}
+    <tr>
+      <td><strong>{{ d.name }}</strong>
+        {% set p = (paths[d.id].type if paths.get(d.id) else None) or (d.speed.path if d.speed else None) %}
+        <br>{% if p == 'direct' %}<span class="badge ok">direct</span>{% elif p == 'lan' %}<span class="badge ok">local network</span>{% elif p == 'relay' %}<span class="badge warn">via relay</span>{% else %}<span class="badge muted">connection unknown</span>{% endif %}
+        {% if d.speed and d.speed.up_bps %}<span class="muted" style="font-size:12px">↑ {{ d.speed.up_bps|mbit }}</span>{% endif %}
+        {% if d.id in pending %}<br><span class="warn">waiting for confirmation</span>{% endif %}</td>
+      <td>
+        {% if d.mode == 'revoked' %}<span class="err">Stopped by {{ d.name }}</span> · {{ d.revoked_at|ltime }}
+          <br><span class="muted">{{ d.name }} no longer stores your backups. Remove this bro with × and pair with someone else.</span>
+        {% elif activity.get(d.id) %}<span class="warn" data-activity="{{ d.id }}">{{ activity[d.id] }}…</span>
+        {% elif d.mode == 'hold' %}<span class="warn">Paused after recovery</span><br>
+          <span class="muted">Restore your files first. Only resume backups once your NAS is complete again, otherwise you create empty versions.</span>
+        {% elif d.mode == 'seed_ready' %}
+          <span class="ok">Seed ready</span> ({{ d.seed_size|bytes }})<br>
+          <span class="muted">Copy <code>{{ d.seed_path.split('/')[-1] }}</code> to an external disk{% if not seed_external %} (it is now in your bro-backup folder, under <code>seed</code>){% endif %} and give it to {{ d.name }}. Once he has imported it, the backup continues over the internet by itself.</span>
+        {% elif d.mode == 'seed_error' %}<span class="err">Seed failed</span><pre class="err">{{ d.seed_error }}</pre>
+        {% elif d.last_error %}<span class="err">Failed</span><pre class="err">{{ d.last_error }}</pre>
+        {% elif d.last_ok %}<span class="ok">OK</span> · {{ d.last_ok|ltime }}
+          <br><span class="muted">new data sent: {{ d.last_added|bytes }}</span>
+          {% if d.last_sources %}{% set z = d.last_sources|selectattr('origin', 'ne', 'live')|list|length %}
+          <br><span class="muted">{{ z }} of {{ d.last_sources|length }} folder(s) from a ZFS snapshot</span>{% endif %}
+          {% if d.seed_imported %}<br><span class="muted">started via disk on {{ d.seed_imported|ltime }}</span>{% endif %}
+          {% if d.last_warning %}<pre class="warn">{{ d.last_warning }}</pre>{% endif %}
+        {% else %}<span class="muted">No backup yet</span>{% endif %}
+        {% if d.restore_test %}<br>{% if d.restore_test.ok %}<span class="muted">restore test {{ d.restore_test.at|ltime }}: <span class="ok">OK</span>, {{ d.restore_test.files }} file(s) verified{% if d.restore_test.compared %}, {{ d.restore_test.identical }} identical to the original{% endif %}</span>
+          {% else %}<span class="err">restore test {{ d.restore_test.at|ltime }} failed: {{ d.restore_test.error|friendly }}</span>
+          <details><summary>details</summary><pre class="muted">{{ d.restore_test.error }}</pre></details>{% endif %}{% endif %}
+        {% if d.full_check and not d.full_check.ok %}<br><span class="err">integrity check {{ d.full_check.at|ltime }}: damaged data at your bro</span>
+          <a href="{{ url_for('dest_snapshots', dest_id=d.id) }}#integrity">what to do</a>{% endif %}
+        {% if d.last_restore %}<br><span class="muted">restored: {{ d.last_restore }}</span>{% endif %}
+        {% if d.address_changed %}<br><span class="muted">new address received {{ d.address_changed|ltime }}</span>{% endif %}
+        {% if d.remote_disk == 'err' %}<br><span class="err">{{ d.name }}'s NAS is almost full: backups there may fail</span>
+        {% elif d.remote_disk == 'warn' %}<br><span class="warn">{{ d.name }}'s NAS is filling up</span>{% endif %}
+      </td>
+      <td class="hide-sm">{% if d.remote_quota_gib %}{{ d.remote_usage|bytes }} of {{ d.remote_quota_gib }} GiB
+          {% if d.space_asked %}<br><span class="muted">asked {{ d.space_asked.gib }} GiB more {{ d.space_asked.at|ltime }}</span>{% endif %}
+          {% if d.mode != 'revoked' %}<details><summary class="muted">ask for more</summary>
+            <form method="post" action="{{ url_for('dest_ask_space', dest_id=d.id) }}" style="max-width:220px">
+              <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+              <label>Extra GiB<input type="number" name="gib" min="1" value="{{ [ (d.remote_quota_gib * 0.5)|round|int, 1 ]|max }}" required></label>
+              <label>Note (optional)<input type="text" name="note" maxlength="200" placeholder="photos keep growing"></label>
+              <button class="ghost">Ask {{ d.name }}</button></form></details>{% endif %}
+        {% else %}-{% endif %}</td>
+      <td style="white-space:nowrap">
+        {% if d.mode in ('seed_ready', 'seed_error') %}
+          <form class="inline" method="post" action="{{ url_for('dest_online', dest_id=d.id) }}"
+                data-confirm="Cancel the seed and send everything over the internet?">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Use internet instead</button></form>
+          {% if d.mode == 'seed_error' %}<form class="inline" method="post" action="{{ url_for('dest_seed', dest_id=d.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button>Retry</button></form>{% endif %}
+        {% elif d.mode == 'revoked' %}
+        {% elif d.mode == 'hold' %}
+          <a class="btn" href="{{ url_for('dest_snapshots', dest_id=d.id) }}">Restore</a>
+          <form class="inline" method="post" action="{{ url_for('dest_online', dest_id=d.id) }}"
+                data-confirm="Are all your files back? After this, this NAS backs up every night again.">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Resume backups</button></form>
+        {% elif d.mode != 'seeding' %}
+          {% if not pause %}<form class="inline" method="post" action="{{ url_for('dest_run', dest_id=d.id) }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button>Now</button></form>{% endif %}
+          <a class="btn ghost" href="{{ url_for('dest_snapshots', dest_id=d.id) }}">Restore</a>
+          <a class="btn ghost" href="{{ url_for('dest_speed', dest_id=d.id) }}">Speed</a>
+          <a class="btn ghost" href="{{ url_for('dest_history', dest_id=d.id) }}">History</a>
+          {% if not d.last_ok %}<form class="inline" method="post" action="{{ url_for('dest_seed', dest_id=d.id) }}"
+                data-confirm="Write the first backup to a disk instead of sending it over the internet?">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Via disk</button></form>{% endif %}
+        {% endif %}
+        <a class="btn danger" href="{{ url_for('dest_remove', dest_id=d.id) }}" title="Stop backing up to {{ d.name }}">×</a>
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+    <p class="muted">Nobody yet.</p>
+  {% endif %}
+</section>
+
+<div class="grid">
+  <section>
+    <h2>Invite a bro</h2>
+    {% if invite_code %}
+      <p class="ok">Send this code to your bro. It is shown only once:</p>
+      <textarea readonly class="code" onclick="this.select()">{{ invite_code }}</textarea>
+    {% endif %}
+    <form method="post" action="{{ url_for('invite') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label>Your bro's name<input type="text" name="name" required maxlength="40" placeholder="e.g. Peter"></label>
+      <label>Space you give him (GiB)<input type="number" name="quota" min="1" value="{{ s.default_quota_gib }}"></label>
+      <label class="check"><input type="checkbox" name="mutual_ok" value="1" checked> If he gives me space back, I back up to him too</label>
+      <label class="check"><input type="checkbox" name="seed" value="1"> Send my first backup to him on an external disk</label>
+      <p><button>Create code</button></p>
+    </form>
+  </section>
+  <section>
+    <h2>Got a code from a bro?</h2>
+    <form method="post" action="{{ url_for('add') }}">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label>Paste the code<textarea name="code" required placeholder="Paste the code you received here"></textarea></label>
+      <label class="check"><input type="checkbox" name="mutual" value="1" checked> He may back up to me too</label>
+      <label>Space I give him (GiB)<input type="number" name="quota" min="1" value="{{ s.default_quota_gib }}"></label>
+      <label class="check"><input type="checkbox" name="seed" value="1"> Send my first backup to him on an external disk</label>
+      <p><button>Pair</button></p>
+    </form>
+  </section>
+</div>
+
+{% if ub %}
+<section id="computers">
+  <h2>PCs and servers (UrBackup)</h2>
+  {% for x in ub %}
+    {% if not x.included %}<p class="warn">The UrBackup storage <code>{{ x.rel }}</code> is not sent offsite.
+      <form class="inline" method="post" action="{{ url_for('urbackup_include') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}"><input type="hidden" name="path" value="{{ x.path }}">
+        <button>Include it</button></form></p>{% endif %}
+    {% if x.clients %}
+    <table>
+      <tr><th>Computer</th><th>Last backup</th><th class="hide-sm">File backups</th><th class="hide-sm">Images</th></tr>
+      {% for c in x.clients %}
+      <tr><td><strong>{{ c.name }}</strong></td>
+        <td class="{{ 'ok' if c.ok else 'err' }}">{{ c.last|ltime }}{% if not c.ok %} · nothing for {{ (c.age_h / 24)|round|int }} day(s){% endif %}</td>
+        <td class="hide-sm">{{ c.file_backups }}{% if c.last_file %} <span class="muted">· {{ c.last_file|ltime }}</span>{% endif %}</td>
+        <td class="hide-sm">{{ c.image_backups }}{% if c.volumes %} <span class="muted">· {{ c.volumes|join(', ') }}{% if c.last_image %} · {{ c.last_image|ltime }}{% endif %}</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="muted">No computer backed up in <code>{{ x.rel }}</code> yet.</p>{% endif %}
+  {% endfor %}
+  <p class="muted">Backed up by UrBackup to this NAS{% if ub|selectattr('included')|list %}, and from here to your bros with everything else{% endif %}. Manage the computers in the UrBackup web interface.</p>
+</section>
+{% endif %}
+
+<section id="receivers">
+  <h2>Bros backing up to me</h2>
+  {% if help_code %}
+    <p class="ok">Help code for {{ help_code['for'] }}. He enters it when setting up his new NAS, together with his own recovery code:</p>
+    <textarea readonly class="code" onclick="this.select()">{{ help_code['code'] }}</textarea>
+  {% endif %}
+  {% if receivers %}
+  {% if receivers|length > 5 %}
+  <p style="display:flex; gap:8px; flex-wrap:wrap; align-items:center">
+    <input type="search" id="rfilter" placeholder="Search a bro or reference" style="max-width:280px; margin:0" aria-label="Search bros">
+    <span class="muted">{{ receivers|length }} bros, {{ receivers_total|bytes }} stored</span></p>
+  {% endif %}
+  <table id="rtable">
+    <tr><th>Bro</th><th>Usage</th><th class="hide-sm">Last backup received</th><th></th></tr>
+    {% for r in receivers %}
+    <tr data-search="{{ (r.name ~ ' ' ~ (r.ref or '') ~ ' ' ~ r.user)|lower }}">
+      <td><strong>{{ r.name }}</strong>{% if r.ref %} <span class="muted">· {{ r.ref }}</span>{% endif %}
+        {% if r.request %}<br><span class="warn">asks for {{ r.request.gib }} GiB more ({{ r.request.at|ltime }}){% if r.request.note %}: "{{ r.request.note }}"{% endif %}</span>
+          <form class="inline" method="post" action="{{ url_for('receiver_space_answer', user=r.user, answer='grant') }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button style="padding:2px 8px">Grant</button></form>
+          <form class="inline" method="post" action="{{ url_for('receiver_space_answer', user=r.user, answer='decline') }}">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost" style="padding:2px 8px">Decline</button></form>{% endif %}
+        {% if not r.accepted %}<br><span class="muted">code not used yet</span>{% endif %}
+        {% if r.busy %}<br><span class="warn">{{ r.busy }}…</span>{% endif %}
+        <br><span class="incoming" data-incoming="{{ r.user }}"{% if not r.incoming %} hidden{% endif %}>{{ r.incoming }}</span>
+        {% if r.import_error %}<br><span class="err">Import failed: {{ r.import_error }}</span>{% endif %}
+        {% if r.pickup and not r.busy %}{% if r.pickup.ok %}<br><span class="muted">copied to disk {{ r.pickup.at|ltime }} ({{ r.pickup.size|bytes }}): <code>{{ r.pickup.path }}</code></span>
+          {% else %}<br><span class="err">copy to disk failed: {{ r.pickup.error }}</span>{% endif %}{% endif %}</td>
+      <td>{{ r.usage|bytes }} of {{ r.quota_gib }} GiB
+        {% if r.blocked %}<br><span class="err">over quota: blocked since {{ r.blocked|ltime }}. Give more space to let him back in.</span>
+        {% elif r.usage and r.usage >= r.quota_gib * 1073741824 %}<br><span class="err">quota reached</span>{% endif %}
+        <form method="post" action="{{ url_for('receiver_quota', user=r.user) }}" style="display:flex; gap:6px; margin-top:6px; max-width:200px">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="number" name="quota" min="1" value="{{ r.quota_gib }}" aria-label="Space in GiB" style="margin:0; padding:4px 6px">
+          <button class="ghost" style="padding:4px 8px">Set</button></form></td>
+      <td class="hide-sm">{{ r.last_seen|ltime }}</td>
+      <td style="white-space:nowrap">
+        {% if r.escrow %}<form class="inline" method="post" action="{{ url_for('receiver_help', user=r.user) }}"
+              data-confirm="Create a help code for {{ r.name }}? Only do this when he asks because his NAS crashed.">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Help code</button></form>{% endif %}
+        {% if r.accepted and r.usage %}<form class="inline" method="post" action="{{ url_for('receiver_pickup', user=r.user) }}"
+              data-confirm="Copy the backup of {{ r.name }} to a disk? It stays encrypted: only he can open it, with his recovery code. Use this when his NAS is gone and he wants his data back fast.">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Copy to disk</button></form>{% endif %}
+        <a class="btn danger" href="{{ url_for('receiver_remove', user=r.user) }}">{% if r.accepted %}Stop{% else %}Cancel code{% endif %}</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="muted">You only see encrypted blocks, never their files. <a href="{{ url_for('receivers_csv') }}">Usage per month (CSV)</a></p>
+  <details><summary class="muted">References</summary>
+    <p class="muted">Your own name or customer number per bro. Shown in the list and in the export.</p>
+    {% for r in receivers if r.accepted %}
+    <form method="post" action="{{ url_for('receiver_ref', user=r.user) }}" style="display:flex; gap:6px; align-items:center; max-width:460px">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <span style="min-width:120px">{{ r.name }}</span>
+      <input type="text" name="ref" value="{{ r.ref or '' }}" maxlength="60" style="margin:0" aria-label="Reference for {{ r.name }}">
+      <button class="ghost" style="padding:4px 8px">Save</button></form>
+    {% endfor %}
+  </details>
+  {% else %}
+    <p class="muted">Nobody yet.</p>
+  {% endif %}
+
+  {% if leftovers %}
+  <h2 style="margin-top:20px">Backups of bros that stopped</h2>
+  <table>
+    <tr><th>Bro</th><th>Size</th><th></th></tr>
+    {% for x in leftovers %}
+    <tr>
+      <td><strong>{{ x.name }}</strong>
+        {% if x.since %}<br><span class="muted">{% if x.reason == 'left' %}stopped backing up{% else %}you stopped storing{% endif %} {{ x.since|ltime }}</span>{% endif %}
+        {% if x.delete_after %}<br><span class="warn">he asked to delete it: deleted on {{ x.delete_after|ltime }}</span>{% endif %}</td>
+      <td>{{ x.size|bytes }}</td>
+      <td style="white-space:nowrap">
+        {% if x.delete_after %}<form class="inline" method="post" action="{{ url_for('leftover_keep', user=x.user) }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Keep</button></form>{% endif %}
+        <form class="inline" method="post" action="{{ url_for('leftover_delete', user=x.user) }}"
+              data-confirm="Delete the backups of {{ x.name }} for good? This cannot be undone.">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <details class="reauth-inline"><summary class="btn danger">Delete now</summary>
+            {% include "_reauth.html" %}<button class="danger">Delete for good</button></details></form></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% endif %}
+
+  <h2 style="margin-top:20px">Import a disk from a bro</h2>
+  {% if seeds %}
+  <table>
+    <tr><th>Seed</th><th>For</th><th></th></tr>
+    {% for x in seeds %}
+    <tr>
+      <td><strong>{{ x.from }}</strong><br><span class="muted"><code>{{ x.path }}</code></span>
+        {% if not x.complete %}<br><span class="warn">not finished yet</span>{% endif %}</td>
+      <td>{% if x.known %}{{ x.receiver_name }}{% else %}<span class="err">unknown bro</span>{% endif %}</td>
+      <td>{% if x.known and x.complete %}
+        <form method="post" action="{{ url_for('import_seed') }}">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="path" value="{{ x.path }}">
+          <label class="check"><input type="checkbox" name="replace" value="1"> replace existing</label>
+          {% with reauth_optional=True, reauth_hint="only to replace" %}{% include "_reauth.html" %}{% endwith %}
+          <button>Import</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+    <p class="muted">No seed found. Put your bro's folder in the <code>import</code> folder inside your bro-backup folder{% if seed_external %}, or use the external disk mounted at /seed{% endif %}.</p>
+  {% endif %}
+</section>
+<script>
+  (function () {  // refresh what comes in and what runs, without reloading the page
+    var els = document.querySelectorAll("[data-incoming], [data-activity]");
+    if (!els.length) return;
+    function tick() {
+      fetch("{{ url_for('live_json') }}", { credentials: "same-origin" }).then(function (r) {
+          if (r.redirected) { location.reload(); return null; }  // logged out after idle time: show the login
+          return r.ok ? r.json() : null; })
+        .then(function (j) {
+          if (!j) return;
+          document.querySelectorAll("[data-incoming]").forEach(function (el) {
+            var v = j.incoming[el.getAttribute("data-incoming")];
+            el.textContent = v ? v.text : ""; el.hidden = !(v && v.text);
+          });
+          document.querySelectorAll("[data-activity]").forEach(function (el) {
+            var t = j.activity[el.getAttribute("data-activity")];
+            if (t) { el.textContent = t + "…"; }
+            else if (!el.dataset.done) { el.dataset.done = "1"; el.textContent = "Finished. Refresh the page for the result."; }
+          });
+        }).catch(function () {});
+    }
+    setInterval(tick, 5000);
+  })();
+</script>
+{% endblock %}

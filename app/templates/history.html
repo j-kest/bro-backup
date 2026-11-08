@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('index') }}">← Back</a></p>
+<h1>History: {{ d.name }}</h1>
+<p class="sub">{% if hist %}{{ hist|length }} successful backup(s) since {{ hist[0].at|ltime }}, {{ total_sent|bytes }} sent in total. Hover a bar or point for its value.{% else %}No successful backups recorded yet. The history starts with the next backup.{% endif %}</p>
+{% for title, svg in graphs %}{% if svg %}
+<section>
+  <h2>{{ title }}</h2>
+  {{ svg|safe }}
+  {% if loop.index == 2 %}<p class="muted" style="margin:6px 0 0">Measured just before each backup.</p>{% endif %}
+</section>
+{% endif %}{% endfor %}
+{% if hist %}
+<section>
+  <details><summary>All backups as a table</summary>
+  <table>
+    <tr><th>When</th><th>Sent</th><th class="hide-sm">Read</th><th class="hide-sm">New / changed files</th><th>Duration</th></tr>
+    {% for e in hist|reverse %}
+    <tr><td>{{ e.at|ltime }}</td><td>{{ (e.added or 0)|bytes }}</td><td class="hide-sm">{{ (e.processed or 0)|bytes }}</td>
+        <td class="hide-sm">{{ e.files_new or 0 }} / {{ e.files_changed or 0 }}</td><td>{{ e.seconds|duration if e.seconds else '<1 s' }}</td></tr>
+    {% endfor %}
+  </table>
+  </details>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,5 @@
+flask>=3.1,<4
+waitress>=3.0,<4
+bcrypt>=4.1,<6
+cryptography>=42,<52
+segno>=1.6,<2

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Welcome to BRO Backup</h1>
+<p class="sub">Three things and you are done. Then you pair with a friend's NAS using a single code.</p>
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <section>
+    <h2>1. What is this NAS called?</h2>
+    <label>Name your bro will see
+      <input type="text" name="name" maxlength="40" value="{{ form.get('name', '') }}" placeholder="e.g. Anna's NAS"></label>
+  </section>
+  <section>
+    <h2>2. Password for this page</h2>
+    <div class="grid">
+      <label>Password (at least 10 characters)<input type="password" name="pw" required minlength="10" autocomplete="new-password"></label>
+      <label>Once more<input type="password" name="pw2" required minlength="10" autocomplete="new-password"></label>
+    </div>
+  </section>
+  <section>
+    <h2>3. What do you want to protect?</h2>
+    <p class="muted">Tick the folders that may go to your bro. You can change this later.</p>
+    {% with selected = form.getlist('src') if form.getlist is defined else [] %}{% include "_folders.html" %}{% endwith %}
+  </section>
+  <section>
+    <details {{ 'open' if form.get('help_code') or form.get('recovery_code') }}>
+      <summary>My NAS crashed or was replaced, I want everything back</summary>
+      <p class="muted">Ask your bro to create a <strong>help code</strong> for you in his BRO Backup. Enter it below, together with your own <strong>recovery code</strong>. You can leave the name in step 1 empty.</p>
+      <label>Help code from your bro<textarea name="help_code" placeholder="BROH1....">{{ form.get('help_code', '') }}</textarea></label>
+      <label>Your recovery code<input type="text" name="recovery_code" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase"></label>
+      <p class="muted">Downloaded a key file instead? Choose it here:</p>
+      <input type="file" name="keys" accept=".json,application/json">
+    </details>
+  </section>
+  <section>
+    <details {{ 'open' if disks or form.get('disk') }}>
+      <summary>My bro copied my backup to a disk for me</summary>
+      <p class="muted">The fastest way back after a crash: your bro clicks <strong>Copy to disk</strong> next to your name, you connect that disk here (mounted at <code>/seed</code>, or copied into the <code>import</code> folder of bro-backup). Only your <strong>recovery code</strong> is needed, no internet. You can leave the name in step 1 empty.</p>
+      {% if disks %}
+        {% for x in disks %}
+        <label class="check"><input type="radio" name="disk" value="{{ x.path }}" {{ 'checked' if form.get('disk') == x.path or (loop.first and not form.get('disk')) }}>
+          Copied by <strong>{{ x.from }}</strong> on {{ x.created|ltime }} ({{ x.size|bytes }}){% if not x.escrow %} <span class="warn">without key copy: use a help code above instead</span>{% endif %}</label>
+        {% endfor %}
+        <label>Your recovery code<input type="text" name="disk_code" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX" style="text-transform:uppercase"></label>
+      {% else %}
+        <p class="warn">No disk from a bro found. Connect it and reload this page.</p>
+      {% endif %}
+    </details>
+  </section>
+  <button>Done, start BRO Backup</button>
+</form>
+{% endblock %}

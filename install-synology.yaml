@@ -1,0 +1,16 @@
+services:
+  bro-backup:
+    image: ghcr.io/j-kest/bro-backup:1.0
+    restart: unless-stopped
+    init: true
+    environment:
+      TZ: Europe/Brussels
+      # This NAS's address on your network: bros on the same network connect directly, not via a relay
+      BRO_LAN_ADDRS: "192.168.1.10"
+    ports:
+      - "8484:8484"
+      - "7841:7841/udp"
+      - "7842:7842/udp"
+    volumes:
+      - /volume1/docker/bro-backup:/data
+      - /volume1:/nas:ro

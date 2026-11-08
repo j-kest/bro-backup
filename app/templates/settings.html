@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<form method="post" id="settings-form">
+  <button class="default-submit" tabindex="-1" aria-hidden="true">Save</button>{# Enter in a field saves, not the first button below #}
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <section>
+    <h2>Folders</h2>
+    {% with selected = s.sources %}{% include "_folders.html" %}{% endwith %}
+    <h2 style="margin-top:16px">PCs and servers (UrBackup)</h2>
+    {% for x in ub %}
+      <p>UrBackup storage <code>{{ x.rel }}</code>: {{ x.clients|length }} computer(s).
+        {% if x.included %}<span class="ok">Goes to your bros.</span>
+        {% else %}<span class="warn">Not sent offsite yet.</span>
+          <button class="ghost" name="path" value="{{ x.path }}" formaction="{{ url_for('urbackup_include') }}" formmethod="post">Include it</button>{% endif %}</p>
+    {% else %}
+      <p class="muted">Back up Windows, macOS and Linux computers to this NAS with <a href="https://www.urbackup.org" rel="noopener noreferrer" target="_blank">UrBackup</a> (an app on TrueNAS), and BRO Backup sends them offsite with the rest. No UrBackup storage found yet.</p>
+    {% endfor %}
+    <p><button class="ghost" formaction="{{ url_for('urbackup_scan') }}" formmethod="post">Look for UrBackup</button>
+      <span class="muted">Looks 3 levels deep under /nas. Also done every hour by itself.</span></p>
+    {% if plan %}
+    <h2 style="margin-top:16px">Where each folder is read from</h2>
+    <table>
+      <tr><th>Folder</th><th>Read from</th></tr>
+      {% for i in plan %}<tr><td><code>{{ i.key }}</code></td>
+        <td>{% if i.origin.startswith('zfs:') %}<span class="badge ok">ZFS snapshot</span> <span class="muted">{{ i.origin[4:] }}</span>
+            {% elif i.origin == 'dump' %}<span class="badge ok">database dumps</span>
+            {% else %}<span class="badge warn">live</span>{% if i.note %} <span class="muted">{{ i.note }}</span>{% endif %}{% endif %}</td></tr>{% endfor %}
+    </table>
+    <label class="check"><input type="checkbox" name="use_zfs_snapshots" value="1" {{ 'checked' if s.use_zfs_snapshots }}>
+      Read from the newest ZFS snapshot when there is one: databases and files being written are backed up in a consistent state</label>
+    <label>Use a snapshot only if it is at most this old (hours)<input type="number" name="snapshot_max_age_h" min="1" max="336" value="{{ s.snapshot_max_age_h }}" style="max-width:160px"></label>
+    {% endif %}
+    <h2 style="margin-top:16px">Leave out</h2>
+    <label class="check"><input type="checkbox" name="exclude_defaults" value="1" {{ 'checked' if s.exclude_defaults }}>
+      Skip junk: <span class="muted">{{ default_excludes|join(', ') }}</span></label>
+    <label>Also skip (one pattern per line, e.g. <code>*.iso</code> or <code>cache</code>)
+      <textarea name="excludes" rows="3" placeholder="*.iso">{{ s.excludes|join('\n') }}</textarea></label>
+    <label>Skip files larger than (GB, 0 = no limit)<input type="number" name="exclude_larger_gb" min="0" step="0.1" value="{{ s.exclude_larger_gb }}" style="max-width:160px"></label>
+    <p class="muted">A pattern without a slash matches a file or folder name anywhere. Changes apply from the next backup on.</p>
+    {% if excluded %}<p class="muted">Always excluded: your own bro-backup folder ({{ excluded|join(', ') }}), so your bros' data never leaves again.</p>{% endif %}
+  </section>
+  <section id="databases">
+    <h2>Databases</h2>
+    <p class="muted">A database that is being written during a backup can come back broken. For SQLite databases (Vaultwarden, Home Assistant and many small apps) BRO Backup makes a consistent copy just before every backup, and sends it along as the folder <code>@databases</code>.</p>
+    {% if db_scan.running %}<p class="warn">Looking for databases… refresh in a moment.</p>{% endif %}
+    {% if db_choices %}
+    <table>
+      <tr><th style="width:28px"></th><th>SQLite database</th><th class="hide-sm">Last dump</th></tr>
+      {% for p in db_choices %}{% set r = dump_results.get(p) %}
+      <tr><td><input type="checkbox" name="sqlite_db" value="{{ p }}" {{ 'checked' if p in s.sqlite_dbs }}></td>
+          <td><code>{{ p[5:] if p.startswith('/nas/') else p }}</code></td>
+          <td class="hide-sm">{% if r %}{% if r.ok %}<span class="ok">{{ r.at|ltime }}</span> <span class="muted">{{ r.size|bytes }}, {{ r.method }}</span>{% else %}<span class="err">{{ r.error }}</span>{% endif %}{% else %}<span class="muted">-</span>{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% elif db_scan.at and not db_scan.running %}<p class="muted">No SQLite databases found in your folders.</p>{% endif %}
+    {% for folder in db_scan.immich or [] %}
+      <p><span class="badge ok">Immich</span> Database dumps found in <code>{{ folder[5:] if folder.startswith('/nas/') else folder }}</code>. Immich makes those itself every day, and they go along with that folder. The self-check warns when they get old.</p>
+    {% endfor %}
+    <p><button class="ghost" formaction="{{ url_for('databases_scan') }}" formmethod="post">Look for databases</button>
+      <span class="muted">{% if db_scan.at %}Last looked {{ db_scan.at|ltime }}.{% endif %} Tick the ones to dump and save.</span></p>
+  </section>
+  <section>
+    <h2>Schedule and retention</h2>
+    <div class="grid">
+      <label>Back up every night at
+        <select name="backup_hour">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if h == s.backup_hour }}>{{ "%02d"|format(h) }}:00</option>{% endfor %}</select></label>
+      <label>Stop at (backup window)
+        <select name="backup_end_hour"><option value="-1" {{ 'selected' if s.backup_end_hour < 0 }}>No window: run until done</option>
+          {% for h in range(24) %}{% if h != s.backup_hour %}<option value="{{ h }}" {{ 'selected' if h == s.backup_end_hour }}>{{ "%02d"|format(h) }}:00</option>{% endif %}{% endfor %}</select></label>
+      <label>Keep old versions
+        <select name="retention">
+          <option value="short" {{ 'selected' if s.retention == 'short' }}>Short: 7 days, 4 weeks</option>
+          <option value="standard" {{ 'selected' if s.retention == 'standard' }}>Standard: 7 days, 4 weeks, 12 months</option>
+          <option value="long" {{ 'selected' if s.retention == 'long' }}>Long: 14 days, 8 weeks, 24 months, 5 years</option>
+        </select></label>
+      <label>Limit upload (Mbit/s, 0 = no limit)
+        <input type="number" name="limit_mbit" min="0" value="{{ (s.limit_upload_kib * 8192 / 1000000)|round(1) if s.limit_upload_kib else 0 }}" step="0.1"></label>
+      <label>At night (Mbit/s, empty = same, 0 = no limit)
+        <input type="number" name="limit_night_mbit" min="0" step="0.1" value="{{ ((s.limit_night_kib * 8192 / 1000000)|round(1)) if s.limit_night_kib >= 0 else '' }}"></label>
+      <label>Night is from … to
+        <span style="display:flex; gap:6px">
+          <select name="night_start">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if h == s.night_start }}>{{ "%02d"|format(h) }}:00</option>{% endfor %}</select>
+          <select name="night_end">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if h == s.night_end }}>{{ "%02d"|format(h) }}:00</option>{% endfor %}</select>
+        </span></label>
+    </div>
+  </section>
+  <section>
+    <h2>Notifications</h2>
+    <div class="grid">
+      <label>ntfy URL (optional)<input type="text" name="ntfy_url" value="{{ s.ntfy_url }}" placeholder="https://ntfy.sh/my-secret-topic"></label>
+      <label>ntfy token (optional)<input type="password" name="ntfy_token" placeholder="{{ 'set' if s.ntfy_token else '' }}"></label>
+      <label>Notify when there was no backup for (hours)<input type="number" name="alert_hours" min="24" max="336" value="{{ s.alert_hours }}"></label>
+    </div>
+    <h2 style="margin-top:8px">Email (optional)</h2>
+    <div class="grid">
+      <label>Send with
+        <select name="mail_method" id="mail-method">
+          <option value="smtp" {{ 'selected' if s.mail_method != 'm365' }}>A mail server (SMTP)</option>
+          <option value="m365" {{ 'selected' if s.mail_method == 'm365' }}>Microsoft 365 (Graph API)</option>
+        </select></label>
+      <label>Send to<input type="text" name="mail_to" value="{{ s.mail_to }}" placeholder="you@example.com, other@example.com"></label>
+    </div>
+    <div class="grid" data-mail="m365">
+      <label>Tenant ID or domain<input type="text" name="m365_tenant" value="{{ s.m365_tenant }}" placeholder="contoso.onmicrosoft.com" autocomplete="off"></label>
+      <label>Application (client) ID<input type="text" name="m365_client_id" value="{{ s.m365_client_id }}" placeholder="00000000-0000-0000-0000-000000000000" autocomplete="off"></label>
+      <label>Client secret<input type="password" name="m365_secret" placeholder="{{ 'set' if s.m365_secret else '' }}" autocomplete="new-password"></label>
+      <label>Send from mailbox<input type="text" name="m365_sender" value="{{ s.m365_sender }}" placeholder="nas@example.com" autocomplete="off"></label>
+      <label>Client secret expires on (optional)<input type="date" name="m365_secret_expires" value="{{ s.m365_secret_expires }}"></label>
+    </div>
+    <p class="muted" data-mail="m365">Make the app with <code>install/m365-mail-setup.ps1</code>: it may then send only as that one mailbox
+      (a shared mailbox needs no license). With the expiry date filled in, you are warned 30 days before the secret stops working.</p>
+    {% if s.m365_secret %}<label class="check" data-mail="m365"><input type="checkbox" name="m365_secret_clear" value="1"> Remove the saved client secret</label>{% endif %}
+    <div class="grid" data-mail="smtp">
+      <label>Mail server (SMTP)<input type="text" name="smtp_host" value="{{ s.smtp_host }}" placeholder="smtp.example.com"></label>
+      <label>Port<input type="number" name="smtp_port" min="1" max="65535" value="{{ s.smtp_port }}"></label>
+      <label>Security
+        <select name="smtp_security">
+          <option value="starttls" {{ 'selected' if s.smtp_security == 'starttls' }}>STARTTLS (usually port 587)</option>
+          <option value="ssl" {{ 'selected' if s.smtp_security == 'ssl' }}>SSL/TLS (usually port 465)</option>
+          <option value="none" {{ 'selected' if s.smtp_security == 'none' }}>None (only on your own network)</option>
+        </select></label>
+      <label>User name (optional)<input type="text" name="smtp_user" value="{{ s.smtp_user }}" autocomplete="off"></label>
+      <label>Password<input type="password" name="smtp_password" placeholder="{{ 'set' if s.smtp_password else '' }}" autocomplete="new-password"></label>
+      <label>From address (optional)<input type="text" name="mail_from" value="{{ s.mail_from }}" placeholder="nas@example.com"></label>
+    </div>
+    <div class="grid">
+      <label>Weekly report
+        <select name="report_day"><option value="-1" {{ 'selected' if s.report_day < 0 }}>Off</option>
+          {% for w in weekdays %}<option value="{{ loop.index0 }}" {{ 'selected' if s.report_day == loop.index0 }}>{{ w }} at 09:00</option>{% endfor %}</select></label>
+    </div>
+    <label class="check"><input type="checkbox" name="alert_receivers" value="1" {{ 'checked' if s.alert_receivers }}>
+      Also notify me when a bro that backs up to me sends nothing for that long</label>
+    {% if s.smtp_password %}<label class="check" data-mail="smtp"><input type="checkbox" name="smtp_password_clear" value="1"> Remove the saved mail password</label>{% endif %}
+    <p><button class="ghost" formaction="{{ url_for('notify_test') }}" formmethod="post">Send a test notification</button>
+      <button class="ghost" formaction="{{ url_for('report_now') }}" formmethod="post">Send the weekly report now</button>
+      <span class="muted">Uses the saved settings: save first.</span></p>
+  </section>
+  <section>
+    <h2>Space for bros</h2>
+    <div class="grid">
+      <label>Default space per bro (GiB)<input type="number" name="default_quota_gib" min="1" value="{{ s.default_quota_gib }}"></label>
+    </div>
+    <label class="check"><input type="checkbox" name="append_only" value="1" {{ 'checked' if s.append_only }}>
+      Append-only: bros cannot delete anything here (not even old versions, so their usage keeps growing)</label>
+    <label class="check"><input type="checkbox" name="restore_test" value="1" {{ 'checked' if s.restore_test }}>
+      Monthly restore test: restore a few random files from each bro, verify them and compare them with the originals</label>
+    <label class="check"><input type="checkbox" name="ransomware_watch" value="1" {{ 'checked' if s.ransomware_watch }}>
+      Ransomware alarm: warn me when a backup looks like files were encrypted or deleted, and keep all old versions until I have looked</label>
+    <p class="muted">Tip: put the bro-backup folder on its own dataset with a quota and daily ZFS snapshots. That protects your bros against ransomware, even without append-only.</p>
+  </section>
+  <section id="lan">
+    <h2>Local network</h2>
+    <label>This NAS's addresses on your network
+      <input type="text" name="lan_addrs" value="{{ lan_addrs|join(', ') }}" placeholder="192.168.1.50" maxlength="200"></label>
+    <p class="muted">For bros on the same network, or on VLANs that can reach each other. They then connect directly
+      instead of via a relay. Up to 4 addresses, separated by a comma. The app must also publish UDP ports
+      <code>7841</code> and <code>7842</code> on the same numbers: add <code>"7841:7841/udp"</code> and
+      <code>"7842:7842/udp"</code> under <code>ports</code>. Your bros get the new address right after you save.</p>
+  </section>
+  <section>
+    <h2>Updates</h2>
+    <label class="check"><input type="checkbox" name="update_check" value="1" {{ 'checked' if s.update_check }}>
+      Check once a day whether there is a new version, and let me know</label>
+    <p class="muted">Asks GitHub for the latest release. Nothing about this NAS, your bros or your backups is sent. Updating is always up to you.</p>
+  </section>
+  <section>
+    <h2>Password and two-step login</h2>
+    <p>Change your password and turn on two-step login under <a href="{{ url_for('security_page') }}">Security</a>.</p>
+  </section>
+  <div class="savebar">
+    <span class="muted" id="unsaved" hidden>Unsaved changes</span>
+    <label class="savebar-pw" title="Needed when you change notifications, email, alerts, the weekly report, the restore test, retention, append-only or the ransomware alarm, or leave folders or files out">
+      <span class="muted">Current password (for alerts, retention, leaving out)</span>
+      <input type="password" name="current_pw" autocomplete="new-password"></label>
+    <button>Save</button>
+  </div>
+</form>
+<script>
+  (function () {  // show only the fields of the chosen way to send mail
+    var m = document.getElementById("mail-method");
+    if (!m) return;
+    function show() { document.querySelectorAll("[data-mail]").forEach(function (el) { el.hidden = el.getAttribute("data-mail") !== m.value; }); }
+    m.addEventListener("change", show); show();
+  })();
+  (function () {
+    var f = document.getElementById("settings-form"), u = document.getElementById("unsaved");
+    if (!f || !u) return;
+    f.addEventListener("input", function () { u.hidden = false; });
+    f.addEventListener("change", function () { u.hidden = false; });
+  })();
+</script>
+
+<section id="recovery" style="margin-top:16px">
+  <h2>Recovery code</h2>
+  {% if rc.key %}
+    <p>Set on {{ rc.created|ltime }}. An encrypted copy of your keys is stored at:</p>
+    <ul>
+      {% for d in dests %}<li>{{ d.name }}: {% if d.escrow_at %}<span class="ok">updated {{ d.escrow_at|ltime }}</span>{% else %}<span class="warn">not sent yet</span>{% endif %}</li>
+      {% else %}<li class="muted">no bros yet</li>{% endfor %}
+    </ul>
+  {% else %}
+    <p class="err">No recovery code yet. Without a code or a key file you cannot restore anything after a crash.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('recovery_new') }}"
+        data-confirm="Create a new recovery code? The old one stops working.">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end">
+      {% include "_reauth.html" %}
+      <button class="ghost">{{ 'Create a new recovery code' if rc.key else 'Create a recovery code' }}</button>
+    </div>
+  </form>
+  <form method="post" action="{{ url_for('keys') }}" id="keys" class="keys-form">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <p class="muted">Also want a file with every key? Keep it in your password manager, not on this NAS. You get a notification each time it is downloaded.</p>
+    <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:flex-end">
+      <label style="margin:0">Current password<input type="password" name="current_pw" autocomplete="new-password" required></label>
+      {% if s.totp_secret %}<label style="margin:0">Code from your app<input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" required></label>{% endif %}
+      <button class="ghost">Download emergency keys</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

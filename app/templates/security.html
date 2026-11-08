@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('settings_page') }}">← Settings</a></p>
+<h1>Security</h1>
+<p class="sub">Who can open this page decides over your backups. Keep it to yourself.</p>
+
+<section>
+  <h2>Two-step login</h2>
+  {% if two_step %}
+    <p><span class="badge ok">On</span> Logging in needs your password and a code from your authenticator app.</p>
+    <details><summary>Turn it off</summary>
+      <form method="post" action="{{ url_for('two_step_off') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <div class="grid">
+          <label>Current password<input type="password" name="current_pw" required autocomplete="current-password"></label>
+          <label>Code from your app<input type="text" name="code" required inputmode="numeric" maxlength="7" autocomplete="one-time-code"></label>
+        </div>
+        <button class="danger">Turn two-step login off</button>
+      </form>
+    </details>
+  {% elif pending %}
+    <p>1. Scan this code with an authenticator app (Microsoft Authenticator, Google Authenticator, Bitwarden, 1Password, ...).</p>
+    {% if qr %}<div style="max-width:240px; background:#fff; padding:8px; border-radius:8px">{{ qr|safe }}</div>{% endif %}
+    <p class="muted">Can't scan? Enter this key by hand: <code class="code">{{ pending }}</code></p>
+    <p>2. Type the 6-digit code your app now shows.</p>
+    <form method="post" action="{{ url_for('two_step_confirm') }}" style="display:flex; gap:8px; max-width:360px">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <input type="text" name="code" required inputmode="numeric" maxlength="7" autocomplete="one-time-code" style="margin:0" autofocus>
+      <button>Turn on</button>
+    </form>
+    <form method="post" action="{{ url_for('two_step_cancel') }}" style="margin-top:8px">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Cancel</button></form>
+  {% else %}
+    <p><span class="badge warn">Off</span> Anyone who learns your password can open this page.</p>
+    <p class="muted">With two-step login you also need a code from an app on your phone. Lost your phone? Then switch it off from the NAS itself: see the README, "Locked out".</p>
+    <form method="post" action="{{ url_for('two_step_start') }}" style="display:flex; gap:8px; max-width:420px; align-items:end">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <label style="flex:1">Current password<input type="password" name="current_pw" required autocomplete="current-password"></label>
+      <button>Set up</button>
+    </form>
+  {% endif %}
+</section>
+
+<section>
+  <h2>Password</h2>
+  <form method="post" action="{{ url_for('security_password') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <div class="grid">
+      <label>Current password<input type="password" name="current_pw" required autocomplete="current-password"></label>
+      <label>New password (at least 10 characters)<input type="password" name="new_pw" required minlength="10" autocomplete="new-password"></label>
+      <label>New password again<input type="password" name="new_pw2" required minlength="10" autocomplete="new-password"></label>
+    </div>
+    <button>Change password</button>
+  </form>
+</section>
+
+<section>
+  <h2>Always on</h2>
+  <ul>
+    <li>After {{ max_fails }} wrong logins from one address, that address is blocked for {{ window_min }} minutes, and you get a notification.</li>
+    <li>You are logged out after {{ idle_min }} minutes without activity, and always after {{ max_h }} hours.</li>
+    <li>The page cannot be shown inside another website, and every form is protected against requests from other sites.</li>
+  </ul>
+  <p class="muted">BRO Backup serves this page over plain HTTP on your own network. Do not open port 8484 to the internet. For access from outside, use a VPN such as WireGuard or Tailscale.</p>
+</section>
+{% endblock %}

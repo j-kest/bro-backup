@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<p><a href="{{ url_for('dest_snapshots', dest_id=d.id) }}">← All versions</a></p>
+<h1>Version {{ snap[:8] }}{% if src %} of {{ src }}{% endif %}</h1>
+<p class="sub">{% if when %}Made {{ when|ltime }} · {% endif %}Tick what you need and click Restore. It goes to the <code>restore</code> folder inside your bro-backup folder. Nothing is overwritten.</p>
+{% if busy %}<div class="flash">Busy: {{ busy }}…</div>{% endif %}
+<section>
+  <form method="get" style="display:flex; gap:8px; margin-bottom:12px">
+    <input type="text" name="q" value="{{ q }}" placeholder="Search this version, e.g. invoice or *.pdf" style="margin:0">
+    <button class="ghost">Search</button>
+    {% if q %}<a class="btn ghost" href="{{ url_for('dest_browse', dest_id=d.id, snap=snap) }}">Clear</a>{% endif %}
+  </form>
+  {% if not q %}
+  <p class="muted"><a href="{{ url_for('dest_browse', dest_id=d.id, snap=snap) }}">{{ src or 'top' }}</a>
+    {% for name, p in crumbs %} / <a href="{{ url_for('dest_browse', dest_id=d.id, snap=snap, path=p) }}">{{ name }}</a>{% endfor %}</p>
+  {% else %}
+  <p class="muted">{{ entries|length }} match(es) for <strong>{{ q }}</strong>{% if entries|length >= 1000 %} (first 1000 shown){% endif %}</p>
+  {% endif %}
+  {% if err %}
+    <p class="err">Could not read this version:</p><pre class="err">{{ err }}</pre>
+  {% elif not entries %}
+    <p class="muted">{{ 'Nothing found.' if q else 'This folder is empty.' }}</p>
+  {% else %}
+  <form method="post" action="{{ url_for('dest_restore', dest_id=d.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <input type="hidden" name="snapshot" value="{{ snap }}">
+    <table>
+      <tr><th style="width:28px"><input type="checkbox" onclick="for (const c of document.querySelectorAll('input[name=path]')) c.checked = this.checked" title="Select all"></th>
+          <th>Name</th><th class="hide-sm">Size</th><th class="hide-sm">Changed</th></tr>
+      {% for e in entries %}
+      <tr>
+        <td><input type="checkbox" name="path" value="{{ e.path }}"></td>
+        <td>{% if e.type == 'dir' %}📁 <a href="{{ url_for('dest_browse', dest_id=d.id, snap=snap, path=e.path) }}">{{ e.name }}</a>
+            {% else %}{{ e.name }}{% endif %}</td>
+        <td class="hide-sm muted">{{ e.size|bytes if e.type == 'file' else '' }}</td>
+        <td class="hide-sm muted">{{ e.mtime|ltime if e.mtime else '' }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    <p style="margin-top:12px"><button>Restore selected</button>
+      <span class="muted">A folder comes back with everything in it.</span></p>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

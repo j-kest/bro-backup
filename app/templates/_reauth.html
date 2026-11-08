@@ -1,0 +1,5 @@
+{# Asked again before something that cannot be undone. Not filled in by the browser on purpose. #}
+<div class="reauth">
+  <label>Your password{% if reauth_hint %} <span class="muted">({{ reauth_hint }})</span>{% endif %}<input type="password" name="current_pw" autocomplete="new-password"{% if not reauth_optional %} required{% endif %}></label>
+  {% if two_step() %}<label>Code from your app<input type="text" name="code" inputmode="numeric" maxlength="7" autocomplete="one-time-code"{% if not reauth_optional %} required{% endif %}></label>{% endif %}
+</div>

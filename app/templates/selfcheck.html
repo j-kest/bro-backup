@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block head %}{% if running %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+<h1>Self-check</h1>
+<p class="sub">Checks this NAS, the internet connection and every bro, and tells you what to fix. Nothing is changed.</p>
+{% if running %}
+  <div class="banner warn">Checking… this takes up to a minute when bros are slow to answer.</div>
+{% elif res %}
+  {% set c = res.counts %}
+  {% if res.error %}<div class="banner err">The self-check itself failed: {{ res.error }}</div>
+  {% elif c.err %}<div class="banner err">{{ c.err }} problem{{ 's' if c.err != 1 }} to fix{% if c.warn %}, {{ c.warn }} warning{{ 's' if c.warn != 1 }}{% endif %}</div>
+  {% elif c.warn %}<div class="banner warn">Works, with {{ c.warn }} warning{{ 's' if c.warn != 1 }}</div>
+  {% else %}<div class="banner ok">Everything checks out</div>{% endif %}
+{% endif %}
+<form method="post" style="margin-bottom:16px">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <button {{ 'disabled' if running }}>Check again</button>
+  {% if res %}<span class="muted">Last checked {{ res.at|ltime }}</span>{% endif %}
+</form>
+{% for area, items in groups.items() %}
+<section>
+  <h2>{{ area }}</h2>
+  <table>
+    {% for i in items %}
+    <tr>
+      <td style="width:34%">{{ i.name }}</td>
+      <td style="width:90px">{% if i.status == 'ok' %}<span class="badge ok">OK</span>{% elif i.status == 'warn' %}<span class="badge warn">Warning</span>{% elif i.status == 'err' %}<span class="badge err-b">Problem</span>{% else %}<span class="badge muted">Info</span>{% endif %}</td>
+      <td>{{ i.text }}{% if i.fix and i.status in ('warn', 'err') %}<br><span class="muted">{{ i.fix }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</section>
+{% endfor %}
+<p class="muted">The result is also included in the diagnostics bundle on the <a href="{{ url_for('logs_page') }}">Logs</a> page.</p>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Your recovery code</h1>
+<p class="sub">Write this code down on paper or store it in your password manager. It is shown only once.</p>
+<section>
+  <p style="font:600 22px/1.6 ui-monospace, monospace; letter-spacing:1px; word-spacing:6px; margin:4px 0 12px">{{ code }}</p>
+  <p>If your NAS ever crashes, you need two things to get everything back:</p>
+  <ul>
+    <li>this recovery code</li>
+    <li>a help code your bro creates for you in his BRO Backup</li>
+  </ul>
+  <p class="muted">An encrypted copy of your keys is stored at every bro. Without this code nobody can open it, not your bro and not us. Lost the code? Create a new one in Settings, as long as your NAS still works.</p>
+</section>
+<section style="max-width:420px">
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <label>To check, type the last 4 characters
+      <input type="text" name="last" required maxlength="4" autocomplete="off" style="text-transform:uppercase"></label>
+    <p><button>I wrote it down</button></p>
+  </form>
+</section>
+{% endblock %}

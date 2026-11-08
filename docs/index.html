@@ -1,0 +1,227 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later · Copyright (C) 2026 the BRO Backup authors -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install BRO Backup</title>
+<meta name="description" content="Set up BRO Backup on TrueNAS SCALE, Synology or any Docker host in a few minutes.">
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --fg:#1b2130; --muted:#667085; --line:#e0e4eb;
+          --accent:#2557d6; --accent-soft:#e8eefc; --ok:#17864a; --err:#c62f2f; --code:#f0f2f6; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#11141a; --card:#1a1f28; --fg:#e8ebf1; --muted:#98a1b3; --line:#2b3240;
+            --accent:#729dff; --accent-soft:#1e2a44; --ok:#4cc27e; --err:#ff6b6b; --code:#11151c; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:32px 16px 64px; }
+  h1 { font-size:28px; margin:0 0 6px; } h2 { font-size:18px; margin:0 0 10px; }
+  .lead { color:var(--muted); margin:0 0 24px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+  .tabs { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:16px; }
+  .tabs button { padding:14px 8px; border:1px solid var(--line); border-radius:10px; background:var(--card);
+                 color:var(--fg); font-family:inherit; font-size:15px; font-weight:600; line-height:1.3; cursor:pointer; }
+  .tabs button small { display:block; font-weight:400; color:var(--muted); font-size:12.5px; margin-top:2px; }
+  .tabs button[aria-selected="true"] { border-color:var(--accent); background:var(--accent-soft); box-shadow:inset 0 0 0 1px var(--accent); }
+  .panel[hidden] { display:none; }
+  label { display:block; font-weight:500; margin:12px 0 4px; }
+  label .hint { font-weight:400; color:var(--muted); font-size:13.5px; }
+  input[type=text], input[type=number] { width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
+      background:var(--bg); color:var(--fg); font:inherit; }
+  .check { display:flex; gap:8px; align-items:center; font-weight:400; }
+  .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:560px) { .row { grid-template-columns:1fr; } .tabs button { padding:10px 4px; font-size:14px; } }
+  .codebox { position:relative; margin:10px 0 4px; }
+  pre { margin:0; padding:14px 14px; padding-right:84px; background:var(--code); border:1px solid var(--line); border-radius:8px;
+        overflow-x:auto; font:13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; white-space:pre; }
+  .copy { position:absolute; top:8px; right:8px; padding:5px 10px; border-radius:6px; border:1px solid var(--accent);
+          background:var(--accent); color:#fff; font-family:inherit; font-size:12.5px; font-weight:600; cursor:pointer; }
+  pre.wrap { white-space:pre-wrap; word-break:break-all; }
+  .copy.done { background:var(--ok); border-color:var(--ok); }
+  ol { padding-left:22px; margin:8px 0; } li { margin:6px 0; }
+  .muted { color:var(--muted); } .err { color:var(--err); }
+  code { font:13.5px ui-monospace, SFMono-Regular, Menlo, monospace; background:var(--code); padding:1px 5px; border-radius:4px; }
+  details { margin-top:14px; } summary { cursor:pointer; font-weight:600; }
+  footer { color:var(--muted); font-size:13px; margin-top:24px; }
+  a { color:var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Install BRO Backup</h1>
+  <p class="lead">Encrypted off-site backups to a friend's NAS, and his to yours. Pick your system below. This page builds the exact steps for you; nothing leaves your browser.</p>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-truenas" aria-selected="true" aria-controls="p-truenas">TrueNAS SCALE<small>24.10 or newer</small></button>
+    <button role="tab" id="tab-synology" aria-selected="false" aria-controls="p-synology">Synology<small>DSM 7.2 or newer</small></button>
+    <button role="tab" id="tab-docker" aria-selected="false" aria-controls="p-docker">Other<small>any Docker host</small></button>
+  </div>
+
+  <!-- TrueNAS -->
+  <div class="panel" id="p-truenas" role="tabpanel">
+    <section>
+      <h2>The installer: one command</h2>
+      <ol>
+        <li>In TrueNAS, open <strong>System &rarr; Shell</strong>.</li>
+        <li>Paste this command and press Enter:
+          <div class="codebox"><pre id="tn-cmd" class="wrap"></pre><button class="copy" data-copy="tn-cmd">Copy</button></div>
+        </li>
+        <li>Answer a few questions. The defaults are fine for most people. Nothing changes until you confirm.</li>
+        <li>Open the address it shows at the end, e.g. <code>http://192.168.1.20:8484</code>.</li>
+      </ol>
+      <p class="muted">The installer creates a dataset with a quota, a daily snapshot task, and the app itself, using TrueNAS's own API. Want to see what it would do first? Add <code>--dry-run</code> at the end. You can read the script <a id="tn-src" href="#">here</a>.</p>
+    </section>
+    <section>
+      <details>
+        <summary>Rather do it by hand?</summary>
+        <div class="row">
+          <div><label for="tn-pool">Pool name <span class="hint">as shown under Storage</span></label>
+            <input type="text" id="tn-pool" value="tank" autocomplete="off" spellcheck="false"></div>
+          <div><label for="tn-port">Web page port</label>
+            <input type="number" id="tn-port" value="8484" min="1024" max="65535"></div>
+        </div>
+        <p id="tn-err" class="err" hidden></p>
+        <ol>
+          <li>Create a dataset <code id="tn-ds"></code> under Datasets. Give it a quota: the space you give your bros, plus about 10%.</li>
+          <li>Under Data Protection, add a periodic snapshot task for it: daily, keep 30 days.</li>
+          <li>Go to <strong>Apps &rarr; Discover Apps &rarr; &#8942; &rarr; Install via YAML</strong>. Name: <code>bro-backup</code>. Paste:
+            <div class="codebox"><pre id="tn-yaml"></pre><button class="copy" data-copy="tn-yaml">Copy</button></div>
+          </li>
+          <li>Save, then open <code id="tn-url"></code>.</li>
+        </ol>
+      </details>
+    </section>
+  </div>
+
+  <!-- Synology -->
+  <div class="panel" id="p-synology" role="tabpanel" hidden>
+    <section>
+      <h2>Your settings</h2>
+      <div class="row">
+        <div><label for="sy-vol">Volume with your files <span class="hint">usually volume1</span></label>
+          <input type="text" id="sy-vol" value="volume1" autocomplete="off" spellcheck="false"></div>
+        <div><label for="sy-port">Web page port</label>
+          <input type="number" id="sy-port" value="8484" min="1024" max="65535"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="sy-usb"> I want to write the first backup straight to a USB disk</label>
+      <p id="sy-err" class="err" hidden></p>
+    </section>
+    <section>
+      <h2>Steps</h2>
+      <ol>
+        <li>Install <strong>Container Manager</strong> from the Package Center, if it is not installed yet.</li>
+        <li>In File Station, inside the shared folder <code>docker</code>, create two folders: <code>bro-backup</code> and <code>bro-backup-app</code>.</li>
+        <li>Open Container Manager, go to <strong>Project</strong> and create a project. Name: <code>bro-backup</code>. Path: <code>/docker/bro-backup-app</code>. Choose to create a <code>docker-compose.yml</code> and paste:
+          <div class="codebox"><pre id="sy-yaml"></pre><button class="copy" data-copy="sy-yaml">Copy</button></div>
+        </li>
+        <li>Finish the wizard. You do not need a web portal.</li>
+        <li>Open <code id="sy-url"></code>.</li>
+      </ol>
+    </section>
+  </div>
+
+  <!-- Other Docker -->
+  <div class="panel" id="p-docker" role="tabpanel" hidden>
+    <section>
+      <h2>Your settings</h2>
+      <label for="dk-data">Folder for BRO Backup's own data <span class="hint">your bros' backups are stored here too</span></label>
+      <input type="text" id="dk-data" value="/srv/bro-backup" autocomplete="off" spellcheck="false">
+      <label for="dk-nas">Folder that holds the files you want to protect <span class="hint">mounted read-only</span></label>
+      <input type="text" id="dk-nas" value="/srv/data" autocomplete="off" spellcheck="false">
+      <label for="dk-port">Web page port</label>
+      <input type="number" id="dk-port" value="8484" min="1024" max="65535">
+      <p id="dk-err" class="err" hidden></p>
+    </section>
+    <section>
+      <h2>Steps</h2>
+      <ol>
+        <li>Save this as <code>compose.yaml</code>:
+          <div class="codebox"><pre id="dk-yaml"></pre><button class="copy" data-copy="dk-yaml">Copy</button></div>
+        </li>
+        <li>Start it with <code>docker compose up -d</code>.</li>
+        <li>Open <code id="dk-url"></code>.</li>
+      </ol>
+    </section>
+  </div>
+
+  <section>
+    <h2>After the install</h2>
+    <p>The web page asks for a name, a password and the folders to protect. Then you get your <strong>recovery code</strong>: keep it in a password manager or on paper, never on the NAS itself. To pair, one of you creates a code and the other pastes it.</p>
+    <p class="muted">Full guide, troubleshooting and source code: <a id="repo-link" href="#">GitHub</a>.</p>
+  </section>
+
+  <footer>BRO Backup · Best Remote Online Backup · free software under <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a></footer>
+</main>
+
+<script>
+  // Change these two lines when the repository or image moves.
+  const REPO = "j-kest/bro-backup";
+  const IMAGE = "ghcr.io/j-kest/bro-backup:1.0";
+
+  const $ = id => document.getElementById(id);
+  const RAW = `https://raw.githubusercontent.com/${REPO}/main/install/truenas-install.py`;
+  $("repo-link").href = `https://github.com/${REPO}`;
+  $("tn-src").href = `https://github.com/${REPO}/blob/main/install/truenas-install.py`;
+  $("tn-cmd").textContent = `curl -fsSL ${RAW} -o /tmp/bro-install.py && sudo python3 /tmp/bro-install.py`;
+
+  let TZ = "UTC";
+  try { TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; } catch (e) {}
+  const compose = (port, vols) => [
+    "services:", "  bro-backup:", `    image: ${IMAGE}`, "    restart: unless-stopped", "    init: true",
+    "    environment:", `      TZ: ${TZ}`,
+    "    ports:", `      - "${port}:8484"`, '      - "7841:7841/udp"', '      - "7842:7842/udp"', "    volumes:", ...vols.map(v => `      - ${v}`)].join("\n");
+
+  const portOk = p => /^\d+$/.test(p) && +p >= 1024 && +p <= 65535;
+  const nameOk = n => /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(n);
+  const pathOk = p => /^\/[^\s"'`$\\]*$/.test(p);
+  const url = port => `http://<ip-of-your-nas>:${port}`;
+
+  function show(errId, msg) { const e = $(errId); e.hidden = !msg; e.textContent = msg || ""; return !msg; }
+
+  function render() {
+    // TrueNAS by hand
+    const pool = $("tn-pool").value.trim(), tport = $("tn-port").value.trim();
+    if (show("tn-err", !nameOk(pool) ? "A pool name has only letters, digits, - _ and ." : !portOk(tport) ? "Choose a port between 1024 and 65535." : "")) {
+      $("tn-ds").textContent = `${pool}/bro-backup`;
+      $("tn-yaml").textContent = compose(tport, [`/mnt/${pool}/bro-backup:/data`, `/mnt/${pool}:/nas:ro,rslave`]);
+      $("tn-url").textContent = url(tport);
+    }
+    // Synology
+    const vol = $("sy-vol").value.trim(), sport = $("sy-port").value.trim();
+    if (show("sy-err", !nameOk(vol) ? "A volume name looks like volume1." : !portOk(sport) ? "Choose a port between 1024 and 65535." : "")) {
+      const vols = [`/${vol}/docker/bro-backup:/data`, `/${vol}:/nas:ro`];
+      if ($("sy-usb").checked) vols.push("/volumeUSB1/usbshare:/seed");
+      $("sy-yaml").textContent = compose(sport, vols);
+      $("sy-url").textContent = url(sport);
+    }
+    // Other Docker host
+    const data = $("dk-data").value.trim(), nas = $("dk-nas").value.trim(), dport = $("dk-port").value.trim();
+    if (show("dk-err", !pathOk(data) || !pathOk(nas) ? "Use absolute paths without spaces, e.g. /srv/data." : !portOk(dport) ? "Choose a port between 1024 and 65535." : "")) {
+      $("dk-yaml").textContent = compose(dport, [`${data}:/data`, `${nas}:/nas:ro`]);
+      $("dk-url").textContent = url(dport).replace("<ip-of-your-nas>", "<ip-of-this-host>");
+    }
+  }
+  document.querySelectorAll("input").forEach(i => i.addEventListener("input", render));
+  render();
+
+  // Tabs
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  function select(tab) {
+    tabs.forEach(t => { const on = t === tab; t.setAttribute("aria-selected", on); $(t.getAttribute("aria-controls")).hidden = !on; });
+    try { localStorage.setItem("bro-setup-tab", tab.id); } catch (e) {}
+  }
+  tabs.forEach(t => t.addEventListener("click", () => select(t)));
+  try { const saved = localStorage.getItem("bro-setup-tab"); if (saved && $(saved)) select($(saved)); } catch (e) {}
+
+  // Copy buttons
+  document.querySelectorAll(".copy").forEach(b => b.addEventListener("click", async () => {
+    const text = $(b.dataset.copy).textContent;
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const r = document.createRange(); r.selectNodeContents($(b.dataset.copy)); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+    b.textContent = "Copied"; b.classList.add("done");
+    setTimeout(() => { b.textContent = "Copy"; b.classList.remove("done"); }, 1600);
+  }));
+</script>
+</body>
+</html>

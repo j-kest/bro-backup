@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block head %}{% if testing %}<meta http-equiv="refresh" content="3">{% endif %}{% endblock %}
+{% block content %}
+{% set r = d.speed or {} %}
+{% set p = (path.type if path else None) or r.path %}
+<p><a href="{{ url_for('index') }}">← Back</a></p>
+<h1>Connection and speed: {{ d.name }}</h1>
+<p class="sub">Measures how fast data goes to and from your bro, through the same connection your backups use. Nothing is stored at your bro.</p>
+
+<section>
+  <h2>Connection</h2>
+  {% if p == 'direct' %}
+    <p><span class="badge ok">Direct</span> Your NAS and your bro's NAS talk to each other directly over the internet. This is the fastest route.</p>
+  {% elif p == 'lan' %}
+    <p><span class="badge ok">Direct, local network</span> Both NAS devices are on the same local network. Ideal for a first backup before your bro takes his NAS home.</p>
+  {% elif p == 'relay' %}
+    <p><span class="badge warn">Via relay</span> A direct connection did not work, so traffic goes through a public relay server. Your data stays encrypted, but the relay is shared and rate-limited.</p>
+    <p class="muted">To try for a direct connection, add <code>"7841:7841/udp"</code> and <code>"7842:7842/udp"</code> under <code>ports</code> in the app settings, on both NAS devices. For a large first backup, a disk is the better choice here.</p>
+  {% else %}
+    <p class="muted">Not known yet. It shows up after the first backup or speed test.</p>
+  {% endif %}
+  {% set detail = (path.detail if path else None) or r.path_detail %}
+  {% if detail %}<p class="muted">Route: <code>{{ detail }}</code>{% if path %} · seen {{ path.at|ltime }}{% endif %}</p>{% endif %}
+</section>
+
+<section>
+  <h2>Speed test</h2>
+  {% if testing %}
+    <p class="warn">{{ busy }}…</p>
+    <p class="muted">This takes about {{ seconds * 2 + 10 }} seconds, plus the time to measure your folders the first time.</p>
+  {% else %}
+  {% if busy %}<p class="muted">Busy now: {{ busy }}. You can test again when it is done.</p>{% endif %}
+  {% if d.speed_error %}<p class="err">The last test failed: {{ d.speed_error }}</p>{% endif %}
+  {% if r.up_bps %}
+    <table>
+      <tr><th>Measured on {{ r.at|ltime }}</th><th>Speed</th></tr>
+      <tr><td>Upload to {{ d.name }} <span class="muted">(your backups)</span></td><td><strong>{{ r.up_bps|mbit }}</strong></td></tr>
+      <tr><td>Download from {{ d.name }} <span class="muted">(a restore)</span></td><td><strong>{{ r.down_bps|mbit }}</strong></td></tr>
+    </table>
+    {% if r.limited %}<p class="muted">Your upload limit in Settings caps backups at {{ r.eff_up_bps|mbit }}. The estimates below use that.</p>{% endif %}
+  {% elif not d.speed_error %}
+    <p class="muted">No test yet.</p>
+  {% endif %}
+  {% endif %}
+  {% if not testing %}
+  <form method="post" action="{{ url_for('dest_speed_run', dest_id=d.id) }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <p><button>{{ 'Test again' if r.up_bps or d.speed_error else 'Run speed test' }}</button></p>
+  </form>
+  {% endif %}
+</section>
+
+{% if r.up_bps and not testing %}
+<section>
+  <h2>How long will it take?</h2>
+  <table>
+    <tr><th>What</th><th>Size</th><th>Estimated time</th></tr>
+    <tr><td>First backup of your selected folders</td><td>{{ r.src_bytes|bytes }}</td><td><strong>{{ r.first_s|duration if r.first_s else '-' }}</strong></td></tr>
+    {% if r.daily_s %}<tr><td>A nightly backup, like the last one</td><td>{{ d.last_added|bytes }}</td><td>{{ r.daily_s|duration }}</td></tr>{% endif %}
+    <tr><td>Restoring everything from {{ d.name }}</td><td>{{ r.restore_bytes|bytes }}</td><td>{{ r.restore_s|duration if r.restore_s else '-' }}</td></tr>
+  </table>
+  <p class="muted">Estimates at the measured speed. The first backup is usually faster than shown, because restic compresses and skips duplicate data. Speeds change during the day.</p>
+  {% if r.first_s and r.first_s > 172800 and not d.last_ok %}
+    <p class="warn"><strong>Tip:</strong> the first backup would take more than two days. Consider sending it on an external disk: use <em>Via disk</em> on the overview.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}

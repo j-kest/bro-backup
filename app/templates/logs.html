@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Logs</h1>
+<p class="sub">What BRO Backup did recently. Passwords, keys and full connection tickets never appear here.</p>
+
+<section>
+  <h2>Help from someone else?</h2>
+  <p>Download a diagnostics bundle and send it to whoever helps you. It contains settings, status and logs, but no passwords, keys or full connection tickets, and none of your files.</p>
+  <p><a class="btn" href="{{ url_for('diagnostics') }}">Download diagnostics</a></p>
+</section>
+
+<section>
+  <h2>Processes</h2>
+  <table>
+    <tr><th>Part</th><th>Status</th><th class="hide-sm">Restarts</th><th class="hide-sm">Last output</th></tr>
+    {% for p in processes %}
+    <tr>
+      <td><code>{{ p.key }}</code></td>
+      <td>{% if p.alive %}<span class="ok">running</span>{% else %}<span class="err">stopped</span>{% endif %}
+        {% set t = p.key[7:] if p.key.startswith('tunnel-') else None %}
+        {% if t and paths.get(t) %}<br><span class="muted">{{ paths[t].type }}: {{ paths[t].detail }}</span>{% endif %}</td>
+      <td class="hide-sm">{{ p.restarts }}</td>
+      <td class="hide-sm"><pre class="muted" style="margin:0">{{ p.last|join('\n') or '-' }}</pre></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="muted">Nothing running yet.</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<section>
+  <h2>Recent log</h2>
+  <p>
+    <a class="btn {{ 'ghost' if level == 'warning' }}" href="{{ url_for('logs_page') }}">All</a>
+    <a class="btn {{ 'ghost' if level != 'warning' }}" href="{{ url_for('logs_page', level='warning') }}">Problems only</a>
+  </p>
+  {% if lines %}
+  <pre style="max-height:520px; overflow:auto; background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px">{% for l in lines %}{% if ' ERROR ' in l or ' WARNING ' in l %}<span class="{{ 'err' if ' ERROR ' in l else 'warn' }}">{{ l }}</span>{% else %}{{ l }}{% endif %}
+{% endfor %}</pre>
+  {% else %}
+    <p class="muted">Nothing logged yet.</p>
+  {% endif %}
+</section>
+{% endblock %}

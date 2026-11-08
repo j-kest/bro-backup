@@ -1,0 +1,12 @@
+{% if folders %}
+<div class="folders">
+  {% for f in folders %}
+  <label class="check {{ 'd2' if f.depth == 2 }}{{ 'd3' if f.depth == 3 }}">
+    <input type="checkbox" name="src" value="{{ f.path }}" {{ 'checked' if f.path in selected }}>
+    {{ f.label }}
+  </label>
+  {% endfor %}
+</div>
+{% else %}
+<p class="err">No folders of your NAS are visible. Check the second line under volumes in the app settings.</p>
+{% endif %}
