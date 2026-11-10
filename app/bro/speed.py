@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.0.1
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 10/11/2026
 # Name : bro-backup (bro/speed.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -33,6 +33,9 @@ from .core import (
 )
 
 
+DOWNLOAD_GRACE = 15  # seconds a bro may send longer than asked before we stop reading
+
+
 # ---------------------------------------------------------------- speed test
 def basic_auth(d):
     return "Basic " + base64.b64encode(f"{d['user']}:{d['password']}".encode()).decode()
@@ -47,7 +50,7 @@ def speed_upload(port, d, seconds):
     conn = http.client.HTTPConnection("127.0.0.1", port, timeout=60)
     try:
         start = time.monotonic()
-        end, sent = start + seconds, 0
+        end, sent, busy_waits = start + seconds, 0, 0
         while time.monotonic() < end and sent < SPEED_MAX_BYTES:
             conn.putrequest("POST", "/bro/speedtest")
             conn.putheader("Authorization", basic_auth(d))
@@ -58,6 +61,10 @@ def speed_upload(port, d, seconds):
                 conn.send(block)
             resp = conn.getresponse()
             body = resp.read(65536)  # a few numbers: never read an unlimited answer from a bro
+            if resp.status == 429 and sent and busy_waits < 10:  # another bro took the test slot between two parts
+                busy_waits += 1
+                time.sleep(1)
+                continue
             if resp.status == 413:
                 raise RuntimeError("Your bro runs an older version that cannot take this test. Ask him to update.")
             if resp.status != 200:
@@ -84,7 +91,8 @@ def speed_download(port, d, seconds):
     if resp.status != 200:
         raise RuntimeError(f"Bro refused the download test ({resp.status})")
     total, first, first_len, last = 0, None, 0, None
-    while True:
+    stop = time.monotonic() + seconds + DOWNLOAD_GRACE  # the bro sends for `seconds`: never read longer, nor more than the cap
+    while time.monotonic() < stop and total < SPEED_MAX_BYTES + SPEED_PART:
         chunk = resp.read(1024 * 1024)
         if not chunk:
             break

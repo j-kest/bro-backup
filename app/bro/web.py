@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.0.1
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 10/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -694,6 +694,15 @@ def dest_run(dest_id):
 
 @app.post("/dest/<dest_id>/seed")
 def dest_seed(dest_id):
+    """A seed stops backups over the internet to this bro until he imports the disk: password (and code)."""
+    d = get_dest(dest_id)
+    if not d:
+        abort(404)
+    if not _reauth_ok():
+        return _reauth_failed(url_for("index"))
+    log.warning("Seed for %s started from %s: backups over the internet wait for it", d["name"], request.remote_addr)
+    notify(f"Backups to {d['name']} go on a disk now", f"Started from {request.remote_addr}. Backups over the internet "
+           f"to {d['name']} wait until he has imported the disk.", priority="high")
     threading.Thread(target=backup.run_seed, args=(dest_id,), daemon=True).start()
     flash("The seed is being written. Backups over the internet are paused meanwhile.", "ok")
     return redirect(url_for("index"))

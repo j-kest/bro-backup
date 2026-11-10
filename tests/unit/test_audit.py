@@ -479,5 +479,85 @@ class R8PendingAccept(unittest.TestCase):
         th.assert_called_once()
         self.assertEqual(core.load_state()["pending_accepts"], [])
 
+
+# ================================================================ re-check of 1.0.0 (R4b, R9, R10)
+class R9RelayUrls(unittest.TestCase):
+    def test_only_plain_relay_urls(self):
+        good = [relay("https://euc1-1.relay.n0.iroh.link./"), relay("https://use1-1.relay.n0.iroh.link"),
+                relay("https://aps1-1.relay.n0.iroh.link:443/")]
+        bad = [relay("https://evil.example\\@euc1-1.relay.n0.iroh.link/"), relay("https://u:p@euc1-1.relay.n0.iroh.link/"),
+               relay("https://evil.example/x?.relay.n0.iroh.link"), relay("https://euc1-1.relay.n0.iroh.link/path"),
+               relay("https://euc1-1.relay.n0.iroh.link#@evil.example"), relay("https://EUC1-1.relay.n0.iroh.link\t/"),
+               relay("ftp://euc1-1.relay.n0.iroh.link/")]
+        self.assertEqual(lan.clean_peer_ticket(ticket_with(good + bad)), ticket_with(good))
+
+
+class R4bSeed(WebBase):
+    def test_seed_needs_password(self):
+        self.login()
+        d = mk_dest()
+        with mock.patch.object(web.threading, "Thread") as th, mock.patch.object(web, "notify") as n:
+            self.c.post(f"/dest/{d['id']}/seed", data={"csrf": self.csrf("/")})
+            th.assert_not_called()
+            self.c.post(f"/dest/{d['id']}/seed", data={"csrf": self.csrf("/"), "current_pw": PW})
+            th.assert_called_once()
+            n.assert_called_once()
+
+
+class _EndlessHandler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        block = b"x" * 65536
+        try:
+            while True:
+                self.wfile.write(block)
+        except OSError:
+            pass
+
+    def log_message(self, *a):
+        pass
+
+
+class _BusyOnceHandler(_SpeedHandler):
+    busy = [True]
+
+    def do_POST(self):
+        if self.busy and _SpeedHandler.parts:
+            self.busy.pop()
+            n = int(self.headers["Content-Length"])
+            self.rfile.read(n)
+            self.send_response(429)
+            self.send_header("Content-Length", "2")
+            self.end_headers()
+            self.wfile.write(b"{}")
+            return
+        super().do_POST()
+
+
+class R10SpeedLimits(unittest.TestCase):
+    def serve(self, handler):
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.shutdown)
+        self.addCleanup(srv.server_close)
+        return srv.server_address[1]
+
+    def test_download_stops_when_the_bro_keeps_sending(self):
+        from bro import speed
+        port = self.serve(_EndlessHandler)
+        t = time.monotonic()
+        with mock.patch.object(speed, "DOWNLOAD_GRACE", 0.5):
+            bps = speed.speed_download(port, {"user": "a", "password": "b"}, 0.5)
+        self.assertLess(time.monotonic() - t, 5)
+        self.assertGreater(bps, 0)
+
+    def test_upload_waits_when_another_bro_takes_the_slot(self):
+        from bro import speed
+        _SpeedHandler.parts = []
+        port = self.serve(_BusyOnceHandler)
+        with mock.patch.object(speed, "SPEED_PART", 1024 * 1024), mock.patch.object(speed.time, "sleep"):
+            self.assertGreater(speed.speed_upload(port, {"user": "a", "password": "b"}, 0.3), 0)
+
 if __name__ == "__main__":
     unittest.main()

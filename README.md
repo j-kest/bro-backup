@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.0.0.zip .
+python3 -m zipfile -e bro-backup-v1.0.1.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.0 .
 sudo python3 install/truenas-install.py --image bro-backup:1.0
@@ -265,7 +265,7 @@ Every bro on the overview shows how your NAS devices are connected:
 - **local network**: both NAS devices on the same LAN, ideal for a first backup before your bro takes his NAS home;
 - **via relay**: a direct connection did not work, traffic goes through a shared, rate-limited relay (still encrypted).
 
-Click **Speed** next to a bro to measure upload and download through the same connection your backups use. Nothing is stored at your bro. The upload goes in parts of 8 MiB and is timed by your NAS, so it measures until your bro has really received it. A bro on 0.10.11 cannot take the upload test; ask him to update. You also get an estimate of how long the first backup, a nightly backup and a full restore take. When the first backup would take more than two days, it suggests sending it on a disk.
+Click **Speed** next to a bro to measure upload and download through the same connection your backups use. Nothing is stored at your bro. The upload goes in parts of 8 MiB and is timed by your NAS, so it measures until your bro has really received it. The download stops after the agreed time, even when the bro keeps sending. When two bros test the same NAS at once, the second one is asked to try again in a minute; when you and your bro test each other at the same moment, both tests run but each measures about half. A bro on 0.10.11 cannot take the upload test; ask him to update. You also get an estimate of how long the first backup, a nightly backup and a full restore take. When the first backup would take more than two days, it suggests sending it on a disk.
 
 ## First backup on an external disk
 
@@ -333,9 +333,9 @@ Binaries are pinned by version and SHA256 in the Dockerfile.
 - **Ransomware alarm**: when a backup looks like an attack, old versions are no longer cleaned up anywhere until you clear the alarm, and clearing it needs your password.
 - **Disk status for bros**: the status call of a bro only carries ok, filling up or almost full about your disk, never sizes.
 - **Update check**: one GET request a day to `api.github.com`, without any data about you. Only release numbers like `0.10.2` are accepted and the link always points to the releases of this repository. Can be turned off.
-- **Calls to a bro**: redirects are never followed, an answer may be at most 1 MiB and must be JSON, and only known fields of the right type are kept. A relay server in a bro's address is only used when it is one of n0's relays (any server under `relay.n0.iroh.link`), and direct addresses on this NAS itself, link-local, multicast or below port 1024 are dropped, so a bro cannot point your NAS at a server of his choice or at a service on your network. Addresses on your LAN stay: bros on the same network need them. Folder names are passed to restic after `--`, so a folder called `--something` is never an option.
+- **Calls to a bro**: redirects are never followed, an answer may be at most 1 MiB and must be JSON, and only known fields of the right type are kept. A relay server in a bro's address is only used when it is one of n0's relays (any server under `relay.n0.iroh.link`, written as a plain address: a URL with a backslash, a login or a path is refused because parsers read those differently), and direct addresses on this NAS itself, link-local, multicast or below port 1024 are dropped, so a bro cannot point your NAS at a server of his choice or at a service on your network. Addresses on your LAN stay: bros on the same network need them. Folder names are passed to restic after `--`, so a folder called `--something` is never an option.
 - **Settings that matter for an attacker**: changing notifications, email, the no-backup alert, the weekly report, the restore test, retention, append-only or the ransomware alarm needs your current password, and so does leaving something out of the backups (a folder unticked, a pattern added, a lower size limit). Wrong passwords count toward the login lockout. The no-backup alert waits at most 14 days. A stored password or secret is removed when its server changes and no new one is given, so it never goes to another server.
-- **What cannot be undone needs your password**, plus a fresh code from your app when two-step login is on, and sends a notification: a new recovery code (it replaces the key copies at your bros), stopping with a bro, deleting a bro's backups on your NAS, replacing them with a seed, and the emergency keys file. A walk-up at an unlocked browser or a stolen session cannot do these.
+- **What cannot be undone needs your password**, plus a fresh code from your app when two-step login is on, and sends a notification: a new recovery code (it replaces the key copies at your bros), sending the first backup via a disk (it stops backups over the internet to that bro), stopping with a bro, deleting a bro's backups on your NAS, replacing them with a seed, and the emergency keys file. A walk-up at an unlocked browser or a stolen session cannot do these.
 - **Reviewed**: v0.10 had an independent security review. Its findings (among them a script injection through a bro's name and links on a seed disk) are fixed in v0.10.1, each with a test in `tests/unit/test_security.py`. A second independent audit of v0.10.10 is handled in v0.10.11, and its re-check (R1 to R8) in v0.10.12, with a test per finding in `tests/unit/test_audit.py`.
 - **Recommended on TrueNAS**: the bro-backup folder as its own dataset with a quota and daily snapshots (the installer does this). That protects your bros against ransomware.
 
@@ -468,8 +468,9 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Tag `v1.0.0` and publish a GitHub release for it (the update check reads the latest release). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.0` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.0.1` (the update check reads the latest release; `1.0.1` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.0` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
+   The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.
 
 True one-click install in the TrueNAS UI is only possible through the official community catalog in `truenas/apps`: first a feature request on the TrueNAS forum, then a pull request once approved.

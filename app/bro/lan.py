@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.0.1
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 10/11/2026
 # Name : bro-backup (bro/lan.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -19,8 +19,8 @@ on the same port numbers ("7841:7841/udp", "7842:7842/udp")."""
 import base64
 import ipaddress
 import os
+import re
 
-import urllib.parse
 
 from .core import IROH_DATA_PORT, IROH_PAIR_PORT, IROH_RELAYS, my_tickets, settings
 
@@ -143,12 +143,21 @@ RELAY_SUFFIX = ".relay.n0.iroh.link"  # n0's relays; the list in core may grow, 
 LOW_PORTS = 1024
 
 
+RELAY_URL_RE = re.compile(r"^https?://([a-z0-9-]+(?:\.[a-z0-9-]+)+)\.?(?::[0-9]{1,5})?/?$")
+
+
 def _relay_ok(entry):
+    """Only a plain relay URL: scheme, host name, an optional port, nothing else. Parsers disagree on URLs with
+    a backslash, user info or a path (Python and dumbpipe could see a different host), so those are refused."""
     ln, i = _read_varint(entry, 1)
     try:
-        host = (urllib.parse.urlparse(entry[i:i + ln].decode()).hostname or "").rstrip(".").lower()
-    except (UnicodeDecodeError, ValueError):
+        url = entry[i:i + ln].decode("ascii").lower()
+    except UnicodeDecodeError:
         return False
+    m = RELAY_URL_RE.match(url)
+    if not m:
+        return False
+    host = m.group(1)
     return host in IROH_RELAYS or host.endswith(RELAY_SUFFIX)
 
 

@@ -140,7 +140,9 @@
                 data-confirm="Cancel the seed and send everything over the internet?">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Use internet instead</button></form>
           {% if d.mode == 'seed_error' %}<form class="inline" method="post" action="{{ url_for('dest_seed', dest_id=d.id) }}">
-            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button>Retry</button></form>{% endif %}
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <details class="reauth-inline"><summary class="btn">Retry</summary>
+              {% include "_reauth.html" %}<button>Write the seed again</button></details></form>{% endif %}
         {% elif d.mode == 'revoked' %}
         {% elif d.mode == 'hold' %}
           <a class="btn" href="{{ url_for('dest_snapshots', dest_id=d.id) }}">Restore</a>
@@ -155,7 +157,9 @@
           <a class="btn ghost" href="{{ url_for('dest_history', dest_id=d.id) }}">History</a>
           {% if not d.last_ok %}<form class="inline" method="post" action="{{ url_for('dest_seed', dest_id=d.id) }}"
                 data-confirm="Write the first backup to a disk instead of sending it over the internet?">
-            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost">Via disk</button></form>{% endif %}
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+            <details class="reauth-inline"><summary class="btn ghost">Via disk</summary>
+              {% include "_reauth.html" %}<button>Write it to a disk</button></details></form>{% endif %}
         {% endif %}
         <a class="btn danger" href="{{ url_for('dest_remove', dest_id=d.id) }}" title="Stop backing up to {{ d.name }}">×</a>
       </td>
