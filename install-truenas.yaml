@@ -3,6 +3,9 @@ services:
     image: ghcr.io/j-kest/bro-backup:1
     restart: unless-stopped
     init: true
+    cap_drop: [ALL]                # only what the app needs: read every file, restore owners and times
+    cap_add: [DAC_READ_SEARCH, DAC_OVERRIDE, CHOWN, FOWNER, FSETID]
+    security_opt: ["no-new-privileges:true"]
     environment:
       TZ: Europe/Brussels
     ports:

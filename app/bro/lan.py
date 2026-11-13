@@ -1,6 +1,6 @@
-# version : 1.0.1
+# version : 1.2.0
 # created by : JK and CF
-# last edited : 10/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/lan.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -175,17 +175,18 @@ def _direct_ok(entry):
 def clean_peer_ticket(ticket):
     """A bro's ticket with only addresses we are willing to send packets to. A bro could otherwise make our
     dumbpipe connect to any address he likes: a relay of his own choosing, or a service on this NAS or our
-    network (localhost, ports below 1024). Addresses on your network stay: bros on the same LAN need them."""
-    if not ticket or not ticket.startswith("endpoint"):
-        return ticket
+    network (localhost, ports below 1024). Addresses on your network stay: bros on the same LAN need them.
+    A ticket we cannot read entry by entry is refused (None): what we cannot check, we do not use."""
+    if not ticket or not isinstance(ticket, str) or not ticket.startswith("endpoint"):
+        return None
     s = ticket[len("endpoint"):].upper()
     try:
         raw = base64.b32decode(s + "=" * (-len(s) % 8))
     except ValueError:
-        return ticket
+        return None
     entries = _entries(raw)
     if entries is None:
-        return ticket
+        return None
     keep = [e for e in entries if (_relay_ok(e) if e[0] == 0 else _direct_ok(e))]
     if len(keep) == len(entries):
         return ticket

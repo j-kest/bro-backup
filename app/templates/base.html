@@ -132,12 +132,20 @@
   {% block content %}{% endblock %}
   <p class="muted" style="font-size:12px">BRO Backup {{ version }} · Best Remote Online Backup · free software under <a href="https://www.gnu.org/licenses/agpl-3.0.html">AGPL-3.0</a> · <a href="{{ source_url }}">source code</a></p>
 </main>
-<script>
+<script nonce="{{ csp_nonce() }}">
 // Confirmation texts sit in data-confirm, never inside JavaScript: a bro's name cannot break out of it.
 document.addEventListener("submit", function (e) {
   var msg = e.target.getAttribute && e.target.getAttribute("data-confirm");
   if (msg && !window.confirm(msg)) { e.preventDefault(); }
 }, true);
+// Small helpers that used to be inline event attributes (the CSP no longer allows those)
+document.addEventListener("click", function (e) {
+  var t = e.target;
+  if (t.matches && t.matches("[data-select-on-click]")) { t.select(); }
+  if (t.matches && t.matches("[data-select-all]")) {
+    document.querySelectorAll('input[name="' + t.getAttribute("data-select-all") + '"]').forEach(function (c) { c.checked = t.checked; });
+  }
+});
 // Search in the list of bros that back up here (only shown with more than 5)
 var rf = document.getElementById("rfilter");
 if (rf) {

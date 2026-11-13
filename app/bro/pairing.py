@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.2.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/pairing.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -90,6 +90,8 @@ def add_destination(name, dt, pt, user, pw, seed=False, accepting=False, receive
     # that: rest-server keeps accepting the old password for up to 30 s, and a backup that started
     # with it would fail halfway.
     dt, pt = lan.clean_peer_ticket(dt), lan.clean_peer_ticket(pt)
+    if not (dt and pt):
+        raise ValueError("The address in this code could not be checked. Ask your bro for a new code.")
     d = {"id": secrets.token_hex(4), "name": name, "data_ticket": dt, "pair_ticket": pt,
          "user": user, "password": pw, "repo_password": secrets.token_urlsafe(32),
          "created": iso(now()), "mode": "seeding" if seed else None, "accepting": accepting,

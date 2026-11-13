@@ -1,4 +1,4 @@
-# version : 1.1.4
+# version : 1.2.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/backup.py)
@@ -10,6 +10,7 @@ import datetime
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -61,6 +62,10 @@ from .core import (
 # ---------------------------------------------------------------- restic (sending)
 class JobError(Exception):
     pass
+
+
+class NoRoom(JobError):
+    """The backup does not fit at the bro: trying again every hour changes nothing, so it waits for the schedule."""
 
 
 class Paused(Exception):
@@ -543,7 +548,7 @@ def check_fits(d, info):
     if not d.get("last_ok") or d.get("last_sources_key") != sources_key():
         need = sources_bytes()
         if need > free * FIT_MARGIN:
-            raise JobError(f"Not started: your folders hold {human_bytes(need)}, and {name} gave you {q} GiB "
+            raise NoRoom(f"Not started: your folders hold {human_bytes(need)}, and {name} gave you {q} GiB "
                            f"({human_bytes(free)} free). That cannot fit. Ask {name} for more space (ask for more), "
                            "choose fewer folders in Settings, or send the first backup on a disk.")
         return
@@ -552,7 +557,7 @@ def check_fits(d, info):
         return
     need = estimate_added(d)
     if need is not None and need > free:
-        raise JobError(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "
+        raise NoRoom(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "
                        f"{human_bytes(free)} of the {q} GiB he gave you is free. Nothing was sent. Ask {name} for "
                        "more space (ask for more), leave large new files out in Settings, or keep fewer old "
                        "versions (Settings, Keep old versions).")
@@ -701,7 +706,10 @@ def run_backup(dest_id, scheduled=False):
                 raise JobError("Integrity check found problems:\n" + last_lines(p.stderr))
             update_dest(dest_id, last_check=iso(now()))
 
+        if d.get("fail_notified"):
+            notify(f"BRO Backup to {d['name']} works again", "The last backup succeeded.", priority="default")
         update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(),
+                    fail_notified=None, no_room=None,
                     last_added=summary.get("data_added"), last_files={k: summary.get(k) for k in
                                                                       ("files_new", "files_changed", "files_unmodified")},
                     last_processed=summary.get("total_bytes_processed"))
@@ -723,11 +731,29 @@ def run_backup(dest_id, scheduled=False):
         if s["restore_test"] and due and not backups_paused():  # monthly, and after a failed test at every next successful backup
             checks.record_restore_test(d, checks.restore_test(get_dest(dest_id)))
     except Exception as e:
-        update_dest(dest_id, last_error=str(e))
-        notify(f"BRO Backup to {d['name'] if d else dest_id} failed", str(e))
+        update_dest(dest_id, last_error=str(e), no_room=isinstance(e, NoRoom) or None)
+        notify_failure(dest_id, str(e))
     finally:
         activity.pop(dest_id, None)
         lock.release()
+
+
+FAIL_REPEAT = datetime.timedelta(hours=24)
+
+
+def notify_failure(dest_id, text):
+    """A failed backup is retried every hour: notify the first time, when the error changes, and then once a day,
+    not 24 times. "Works again" follows when a backup succeeds."""
+    d = get_dest(dest_id) or {}
+    prev = d.get("fail_notified") or {}
+    first_line = (text or "").splitlines()[0][:200] if text else ""
+    last = parse(prev.get("at"))
+    if prev.get("text") == first_line and last and now() - last < FAIL_REPEAT:
+        log.info("Backup to %s failed again (already notified): %s", d.get("name", dest_id), first_line)
+        return
+    notify(f"BRO Backup to {d.get('name', dest_id)} failed", text)
+    if d:
+        update_dest(dest_id, fail_notified={"text": first_line, "at": iso(now())})
 
 
 def seed_path_for(d):
@@ -790,6 +816,32 @@ def restic_pattern(path):
     return re.sub(r"([*?\[\]\\])", r"\\\1", path)
 
 
+RESTORE_MARGIN = 1.05
+
+
+def check_restore_room(d, target, snap, inc):
+    """Is there room for this restore? restic's dry run says how much it would write, without writing.
+    Restores land in the bro-backup folder, which shares its space (and quota) with your bros' backups:
+    running it full would make their backups fail too."""
+    p = restic(d, "restore", snap, "--target", target, "--dry-run", "--json", *inc, timeout=1800, read=True)
+    total = None
+    for line in (p.stdout or "").splitlines():
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(msg, dict) and msg.get("message_type") == "summary":
+            total = msg.get("total_bytes")
+    if not isinstance(total, int):
+        return  # could not tell: the restore itself will say when the disk is full
+    free = shutil.disk_usage(target).free
+    if total * RESTORE_MARGIN > free:
+        if not os.listdir(target):
+            os.rmdir(target)
+        raise JobError(f"Not restored: this needs {human_bytes(total)} and the bro-backup folder has "
+                       f"{human_bytes(free)} free. Pick fewer files, or make room (a larger dataset quota).")
+
+
 def run_restore(dest_id, snapshot_id, paths=None):
     lock = job_locks.setdefault(dest_id, threading.Lock())
     if not lock.acquire(blocking=False):
@@ -807,12 +859,15 @@ def run_restore(dest_id, snapshot_id, paths=None):
             target = os.path.join(target, slug(src.replace("/", "-"), 64))
             os.makedirs(target, exist_ok=True)
             inc = [a for pth in (paths or []) for a in ("--include", restic_pattern(pth))]
+            check_restore_room(d, target, snapshot_id, inc)
             p = restic(d, "restore", snapshot_id, "--target", target, *inc, read=True)
         else:    # v0.5 and older: absolute paths under /nas
             if paths:  # absolute paths: restore from the snapshot root, so they land under <target>/nas/...
                 inc = [a for pth in paths for a in ("--include", restic_pattern(pth))]
+                check_restore_room(d, target, snapshot_id, inc)
                 p = restic(d, "restore", snapshot_id, "--target", target, *inc, read=True)
             else:
+                check_restore_room(d, target, f"{snapshot_id}:{NAS_DIR}", [])
                 p = restic(d, "restore", f"{snapshot_id}:{NAS_DIR}", "--target", target, read=True)
         if p.returncode != 0:
             raise JobError("Restore failed:\n" + last_lines(p.stderr))

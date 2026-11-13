@@ -1,4 +1,4 @@
-# version : 1.1.2
+# version : 1.2.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/web.py)
@@ -15,7 +15,7 @@ import subprocess
 import threading
 import time
 
-from flask import Flask, Response, abort, flash, jsonify, redirect, render_template, request, session, url_for
+from flask import Flask, Response, abort, flash, g, jsonify, redirect, render_template, request, session, url_for
 
 from . import (
     alarm,
@@ -138,7 +138,15 @@ def bro_version(v):
     return {"text": f"v{v.lstrip('v')}", "cls": "muted", "title": "The same version as yours"}
 
 
+def csp_nonce():
+    """A fresh random value per response, allowed by the CSP for the page's own scripts."""
+    if not hasattr(g, "csp_nonce"):
+        g.csp_nonce = secrets.token_urlsafe(16)
+    return g.csp_nonce
+
+
 app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL, bro_version=bro_version,
+                             csp_nonce=csp_nonce,
                              nas_dir=NAS_DIR,
                              two_step=lambda: auth.two_step_on())
 
@@ -152,7 +160,9 @@ def guard():
         if not token or not secrets.compare_digest(token, request.form.get("csrf", "")):
             abort(400)
     if not setup_done():  # the setup page and its folder picker
-        return None if request.path in ("/setup", "/folders.json") else redirect(url_for("setup"))
+        if request.path not in ("/setup", "/folders.json"):
+            return redirect(url_for("setup"))
+        return None if _setup_allowed() else (render_template("setup_locked.html"), 403)
     if request.path == "/setup":
         return redirect(url_for("index"))
     if session.get("ok") and session.get("sid") not in _live:  # logged out elsewhere, or the app restarted
@@ -175,9 +185,10 @@ def guard():
 
 @app.after_request
 def security_headers(resp):
-    # The pages use a little inline script and style, and nothing from other sites.
+    # Scripts only with the nonce of this response: an injected <script> or onclick= does not run.
+    # Inline style stays allowed (a style cannot run code).
     resp.headers.setdefault("Content-Security-Policy",
-                            "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; "
+                            f"default-src 'self'; script-src 'self' 'nonce-{csp_nonce()}'; style-src 'self' 'unsafe-inline'; "
                             "img-src 'self' data:; frame-ancestors 'none'; form-action 'self'; base-uri 'none'")
     resp.headers.setdefault("X-Frame-Options", "DENY")
     resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -255,6 +266,18 @@ def recover_from_bro(help_code, recovery_code):
         raise ValueError("The recovery code is not correct. Check that you typed it correctly.")
     recovery.apply_bundle(bundle, key.hex(), blob["salt"])
     return bundle, clean_name(resp.get("n")) or clean_name(data.get("n"))
+
+
+def _setup_allowed():
+    """With BRO_SETUP_CODE set (the TrueNAS installer does that), only the link the installer showed opens the
+    first-run setup: otherwise anyone on the network could set the password before you do."""
+    code = os.environ.get("BRO_SETUP_CODE", "")
+    if not code or session.get("setup_ok"):
+        return True
+    if secrets.compare_digest(request.args.get("code", ""), code):
+        session["setup_ok"] = True
+        return True
+    return False
 
 
 @app.route("/setup", methods=["GET", "POST"])

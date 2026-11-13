@@ -17,7 +17,7 @@ from bro import core  # noqa: E402
 
 def reset():
     """A fresh, empty state and receive folder for the next test."""
-    for p in (core.STATE_FILE, core.HTPASSWD):
+    for p in (core.STATE_FILE, core.STATE_BAK, core.HTPASSWD):
         if os.path.exists(p):
             os.remove(p)
     for d in (core.RECEIVE_DIR, core.ESCROW_DIR):

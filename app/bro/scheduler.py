@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.2.0
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/scheduler.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -44,7 +44,7 @@ def backup_due(d, hour):
     last_run = parse(d.get("last_run"))
     if not last_run:
         return True
-    if d.get("last_error"):
+    if d.get("last_error") and not d.get("no_room"):  # no room at the bro: an hour later changes nothing
         return now() - last_run >= datetime.timedelta(hours=1)
     local_now = datetime.datetime.now().astimezone()
     slot = local_now.replace(hour=hour, minute=0, second=0, microsecond=0)

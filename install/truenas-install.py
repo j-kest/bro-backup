@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version : 1.1.3
+# version : 1.2.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (install/truenas-install.py)
@@ -17,6 +17,7 @@
 import argparse
 import json
 import os
+import secrets
 import shutil
 import socket
 import subprocess
@@ -183,6 +184,9 @@ def nas_ips():
     return ips
 
 
+SETUP_CODE = secrets.token_urlsafe(12)  # only the link with this code opens the first-run setup
+
+
 def compose(pool, nas_mounts, port, tz="UTC", lan_ips=()):
     vols = [f"      - /mnt/{pool}/{DATASET_NAME}:/data"]
     # rslave: ZFS mounts a snapshot on the host when it is first opened; without it that mount never
@@ -194,9 +198,13 @@ def compose(pool, nas_mounts, port, tz="UTC", lan_ips=()):
         f"    image: {IMAGE}",
         "    restart: unless-stopped",
         "    init: true",
+        "    cap_drop: [ALL]",  # only what the app needs: read every file, restore owners and times
+        "    cap_add: [DAC_READ_SEARCH, DAC_OVERRIDE, CHOWN, FOWNER, FSETID]",
+        '    security_opt: ["no-new-privileges:true"]',
         *(["    pull_policy: never"] if "/" not in IMAGE.split(":")[0] else []),  # locally built image
         "    environment:",
         f"      TZ: {tz}",
+        f"      BRO_SETUP_CODE: \"{SETUP_CODE}\"",  # until the setup is done, only the link with this code opens it
         *([f"      BRO_LAN_ADDRS: \"{','.join(lan_ips[:4])}\""] if lan_ips else []),  # bros on your network: direct
         "    ports:",
         f"      - \"{port}:8484\"",
@@ -369,11 +377,14 @@ def main():
         print("Dry run finished: nothing was changed. Run the same command without --dry-run to install.")
         return 0
     ips = nas_ips()
-    urls = [f"http://{ip}:{port}" for ip in ips] or [f"http://<ip-of-your-nas>:{port}"]
+    urls = [f"http://{ip}:{port}/setup?code={SETUP_CODE}" for ip in ips] or \
+        [f"http://<ip-of-your-nas>:{port}/setup?code={SETUP_CODE}"]
     ok("BRO Backup is installed.")
     print(f"\nOpen {BOLD}{urls[0]}{END} in your browser" + (f" (or {', '.join(urls[1:])})" if len(urls) > 1 else "") + ".")
+    print("Only this link opens the first setup, so nobody else on your network can set the password first.")
     print("The web page walks you through the rest: a name, a password, the folders to protect,")
     print("and your recovery code. Keep that code safe, outside this NAS.")
+    print("(Already set up? Then the code does nothing: just log in as usual.)")
     return 0
 
 

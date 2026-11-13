@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.2.0
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/pair_api.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -71,8 +71,9 @@ def bro_accept():
         new_pw = secrets.token_urlsafe(24)
         r.update(accepted=True, accepted_at=iso(now()), token=None, pw_sha=sha256(new_pw), bro_name=clean_name(p.get("n")) or None,
                  link_key=secrets.token_urlsafe(24))
-        if peers.valid_ticket(p.get("pt")):
-            r["peer_pt"] = lan.clean_peer_ticket(p["pt"])
+        pt = lan.clean_peer_ticket(p.get("pt")) if peers.valid_ticket(p.get("pt")) else None
+        if pt:
+            r["peer_pt"] = pt
         seed_back, lk, mutual_ok = r.get("seed_back"), r["link_key"], r.get("mutual_ok", True)
     receiving.set_rest_user(user, new_pw)
     mutual = False
@@ -190,13 +191,33 @@ def bro_recover():
 
 
 _speed_slot = threading.Semaphore(1)  # one speed test at a time: it may take a pair API thread for 30 s
+SPEED_BUDGET = 2 * SPEED_MAX_BYTES     # what one bro may move through speed tests ...
+SPEED_WINDOW = 3600                    # ... per hour, up and down together: a real test uses at most half
+_speed_used = {}                       # user -> [(time, bytes)]
+_speed_lock = threading.Lock()
+
+
+def _speed_allowed(user, size, force=False):
+    """Count `size` bytes of speed test for this bro, or refuse when that would go over his budget for this
+    hour. force: count it anyway (what was already sent)."""
+    t = time.monotonic()
+    with _speed_lock:
+        used = [x for x in _speed_used.get(user, []) if t - x[0] < SPEED_WINDOW]
+        if not force and sum(b for _, b in used) + max(size, 1) > SPEED_BUDGET:
+            _speed_used[user] = used
+            return False
+        _speed_used[user] = used + ([(t, size)] if size else [])
+        return True
 
 
 @pair_app.post("/bro/speedtest")
 def bro_speed_upload():
     """Receive test data from a bro and throw it away. Measures how fast it arrives."""
-    if not pair_auth():
+    user = pair_auth()
+    if not user:
         return jsonify(error="Not allowed"), 401
+    if not _speed_allowed(user, request.content_length or SPEED_PART):
+        return jsonify(error="Enough speed tests for this hour. Try again later."), 429
     if not _speed_slot.acquire(blocking=False):
         return jsonify(error="Another speed test is running. Try again in a minute."), 429
     try:
@@ -221,23 +242,32 @@ def _speed_upload():
 @pair_app.get("/bro/speedtest")
 def bro_speed_download():
     """Send test data to a bro for a few seconds, so he can measure his download speed."""
-    if not pair_auth():
+    user = pair_auth()
+    if not user:
         return jsonify(error="Not allowed"), 401
     try:
         secs = min(max(int(request.args.get("seconds", SPEED_SECONDS)), 1), 30)
     except ValueError:
         secs = SPEED_SECONDS
+    if not _speed_allowed(user, 0):  # what is really sent is counted when the test ends
+        return jsonify(error="Enough speed tests for this hour. Try again later."), 429
     if not _speed_slot.acquire(blocking=False):
         return jsonify(error="Another speed test is running. Try again in a minute."), 429
     block = os.urandom(1024 * 1024)
 
+    sent = [0]
+
     def stream():
-        end, sent = time.monotonic() + secs, 0
-        while time.monotonic() < end and sent < SPEED_MAX_BYTES:
+        end = time.monotonic() + secs
+        while time.monotonic() < end and sent[0] < SPEED_MAX_BYTES:
             yield block
-            sent += len(block)
+            sent[0] += len(block)
+
+    def done():
+        _speed_slot.release()
+        _speed_allowed(user, sent[0], force=True)  # what was sent counts, even over the budget: the next test waits
     resp = Response(stream(), mimetype="application/octet-stream")
-    resp.call_on_close(_speed_slot.release)  # also when the bro hangs up halfway
+    resp.call_on_close(done)  # also when the bro hangs up halfway
     return resp
 
 

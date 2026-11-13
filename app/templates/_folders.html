@@ -18,7 +18,7 @@
 </div>
 {% endif %}
 <p class="muted" style="font-size:13px">Click ▸ to open a folder and tick folders deeper down. A ticked folder includes everything below it.</p>
-<script>
+<script nonce="{{ csp_nonce() }}">
 (function () {
   var tree = document.getElementById("folder-tree");
   if (!tree) return;

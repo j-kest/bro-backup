@@ -1,5 +1,14 @@
-flask>=3.1,<4
-waitress>=3.0,<4
-bcrypt>=4.1,<6
-cryptography>=42,<52
-segno>=1.6,<2
+# Exact versions (Dependabot proposes updates), with what they pull in, so every build gets the same code.
+flask==3.1.3
+waitress==3.0.2
+bcrypt==5.0.0
+cryptography==50.0.2
+segno==1.6.6
+werkzeug==3.1.9
+jinja2==3.1.6
+itsdangerous==2.2.0
+markupsafe==3.0.4
+blinker==1.9.0
+click==8.5.1
+cffi==2.1.1
+pycparser==3.12

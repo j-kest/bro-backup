@@ -5,7 +5,7 @@
 
 Encrypted off-site backups to a friend's NAS, and his to yours. No subscription, no account, no open ports. One app, one code to exchange.
 
-> **v1.1.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
+> **v1.2.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
 
 ## How it works
 
@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.1.4.zip .
+python3 -m zipfile -e bro-backup-v1.2.0.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -66,6 +66,9 @@ services:
     image: ghcr.io/j-kest/bro-backup:1
     restart: unless-stopped
     init: true
+    cap_drop: [ALL]                # only what the app needs: read every file, restore owners and times
+    cap_add: [DAC_READ_SEARCH, DAC_OVERRIDE, CHOWN, FOWNER, FSETID]
+    security_opt: ["no-new-privileges:true"]
     environment:
       TZ: Europe/Brussels          # your time zone: the nightly backup runs at local time
       BRO_LAN_ADDRS: "192.168.1.10" # this NAS's address on your network (optional, see below)
@@ -253,6 +256,8 @@ Without a recent copy at a bro the score stays at 20 or lower; with the ransomwa
 
 BRO Backup notifies you when a backup or restore test fails, or when there was no successful backup for too long (72 hours by default). Use [ntfy](https://ntfy.sh) for push messages on your phone, email over SMTP, or both. **Settings → Send a test notification** checks that it arrives.
 
+A failed backup is tried again every hour, but you hear about it once: again only when the error changes or a day has passed, and you get a "works again" when it succeeds. A restore first checks that it fits in the bro-backup folder, so it never fills the space your bros' backups need.
+
 Once a week (Monday 09:00 by default) you also get a short report: per bro the last successful backup, the space used and the last restore test, and for every bro that backs up to you when his last data came in. When a bro that backs up to you sends nothing for longer than the notification limit, you hear that too: his NAS may be off.
 
 ### When the disk fills up
@@ -342,6 +347,10 @@ Binaries are pinned by version and SHA256 in the Dockerfile.
 - **Pairing codes**: single use. The password inside the code is rotated after pairing, and it opens nothing until the bro has used the code: no rest-server login and no pairing API calls.
 - **Key copies at your bros**: AES-256-GCM with a key derived from your recovery code (scrypt, 160 bits of entropy). Fetching one requires a help code your bro creates.
 - **Web UI**: password (scrypt), optional two-step login with an authenticator app (TOTP), CSRF token, LAN only (port 8484). The session cookie only carries a random id: logins live inside the app, so logging out ends a login for real, changing the password or turning on two-step login logs out your other devices, and a restart of the app logs everybody out. After 5 wrong logins from one address it is blocked for 15 minutes and you get a notification. You are logged out after 60 minutes without activity and always after 12 hours. Security headers stop the page from being framed by other sites. The pairing API and rest-server only listen on 127.0.0.1 inside the container.
+- **The first setup**: until it is done, anyone who can reach port 8484 could choose the password. The TrueNAS installer therefore puts a code in the link it shows at the end, and only that link opens the setup. On Synology or another Docker host, finish the setup right after installing, or set `BRO_SETUP_CODE` yourself and open `/setup?code=...`.
+- **No https on the web page**: the password goes over your LAN as plain text, like on most NAS apps. Keep port 8484 on a network you trust and never forward it to the internet; for https, put it behind a reverse proxy.
+- **The container**: runs with only the capabilities it needs (reading every file, restoring owners and times) and `no-new-privileges`. The base image is pinned by digest, Python packages by exact version, the binaries by SHA256, and GitHub Actions by commit.
+- **Keys on the NAS**: the bro-backup folder holds the passwords of your backups and the login secrets (`config/state.json`, readable only by the app). Do not share that dataset over SMB or NFS; whoever can read it can read your backups.
 - **Never backed up**: `/nas` is read-only. The self-check and an hourly check warn when a mount below `/nas` is writable after all (on TrueNAS a dataset that is mounted after the app started can arrive without the read-only flag); restart the app to fix it. Any folder containing a `.bro-backup-data` file (any BRO Backup data folder, also from another or older install) and any seed folder is excluded.
 - **Deleted by a bro**: kept for 7 days outside the reach of his login, so a stolen login cannot wipe a backup at once (see above). rest-server never changes a file in place, so a kept file cannot be damaged either.
 - **Quota**: checked on your side too, not only by the bro who sends. A bro more than 5% over the space you gave him loses his login until you give him more; rest-server also refuses to write beyond the sum of all quotas + 10%.
@@ -475,15 +484,15 @@ Until then, the surest way around the relays is a direct connection: forward UDP
 
 ## Tested
 
-Every push runs the unit tests (`tests/unit`, 127 tests) and the lab test (`tests/lab/e2e.py`: pairing, an address change without relays, unpairing, pairing again) in GitHub Actions, on the image built from the real Dockerfile. An image is only published when they pass.
+Every push runs the unit tests (`tests/unit`) and the lab test (`tests/lab/e2e.py`: pairing, an address change without relays, unpairing, pairing again) in GitHub Actions, on the image built from the real Dockerfile. An image is only published when they pass.
 
 **Upgrade test** (`tests/lab/upgrade.py`): two bros pair and back up on v0.9.0, then update one at a time. Checked: logging in again, the state keeps the bro and his login, a new bro and an old one back up to each other both ways, snapshots from v0.9 stay listed next to the new ones, both sides say hello within a minute once the second one has updated, the two directions of the old pairing get linked (proven with the link key, not by name), an address change, and stopping a bro (the other side is told). Run it with `python3 tests/lab/upgrade.py --old <old image> --new <new image>` on a lab started with the old image.
 
 v0.10 was tested in Docker: the lab in [`lab`](lab/) ran two containers side by side with the real restic, rest-server and dumbpipe binaries, driven by the lab script under PowerShell 7. Tested there: pairing in both directions, an address change without relays (the other bro received the new address and backups continued), unpairing in both directions (messages, tombstone, scheduled deletion, leftover data), backups read from (simulated) ZFS snapshots, leaving out junk, browsing, searching and restoring selected files, the restore test, a full integrity check and repairing deliberately damaged data, email notifications, the weekly report, the silent-bro alert, two-step login (including replayed codes being refused), the login lockout and session expiry, the emergency reset, SQLite dumps of a database being written to (consistent, integrity check passed), Immich dump detection, day/night upload limits (restic restarted with the new limit at the switch), the history charts, the speed test, the self-check, the backup window, seeding via a shared "disk" folder, crash recovery with recovery code and help code, and a diagnostics bundle checked for leaked secrets. The TrueNAS installer was tested against a simulated TrueNAS API.
 
-The test image used Python 3.13 from the build machine instead of the `python:3.13-alpine` base, which could not be downloaded there. The real Dockerfile is otherwise the same.
+**On real NAS devices** (1.0 and 1.1): the TrueNAS installer and updates on TrueNAS SCALE 25.10, installing and updating on a Synology with Container Manager, two NAS devices backing up to each other over the internet and on the same LAN (direct connection), reading from real ZFS snapshots, restoring files.
 
-**Not tested yet:** the build from the real Dockerfile (GitHub Actions does this on the first push), connections over the real internet and through relays, the installer on a real TrueNAS, real ZFS snapshots inside the container, seeds of several terabytes.
+**Not tested yet:** connections through n0's relays for a long time, seeds of several terabytes, more than two bros at once on real hardware, keeping deleted files (hard links) on a real Synology volume.
 
 ## License
 
@@ -497,7 +506,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.1.4` (the update check reads the latest release; `1.1.4` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.2.0` (the update check reads the latest release; `1.2.0` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

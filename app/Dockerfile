@@ -9,7 +9,8 @@
 # Binaries are pinned by version and SHA256 checksum.
 # Build from the repository root: docker build -f app/Dockerfile .
 
-FROM python:3.13-alpine
+# Pinned by digest (Dependabot proposes updates): the same base image on every build.
+FROM python:3.13-alpine@sha256:9ef1a599f863231c3d91e941389bfdc4a2d6070557243d54df1a4e57015b960e
 
 ARG TARGETARCH
 ARG RESTIC_VERSION=0.18.1

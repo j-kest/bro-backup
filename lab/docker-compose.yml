@@ -7,6 +7,9 @@ x-bro: &bro
   image: ${BRO_IMAGE:-bro-backup:lab}
   restart: unless-stopped
   init: true
+  cap_drop: [ALL]               # the same hardening as the install files, so the lab tests it
+  cap_add: [DAC_READ_SEARCH, DAC_OVERRIDE, CHOWN, FOWNER, FSETID]
+  security_opt: ["no-new-privileges:true"]
   environment:
     TZ: ${TZ:-Europe/Brussels}
     SLOW_LOOP_SECONDS: "30"   # faster seed and key copy checks than on a real NAS

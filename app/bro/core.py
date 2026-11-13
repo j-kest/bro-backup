@@ -1,4 +1,4 @@
-# version : 1.1.4
+# version : 1.2.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/core.py)
@@ -24,7 +24,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.1.4"
+VERSION = "1.2.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -286,12 +286,36 @@ def b64d(s):
 
 
 # ---------------------------------------------------------------- state
+STATE_BAK = STATE_FILE + ".bak"
+
+
+def _read_state():
+    """state.json, or its previous version when it is missing or damaged (a crash or a full disk while
+    writing). Only when neither exists is this a new install. When both are damaged we stop: starting the
+    setup wizard over an existing install would lose every key."""
+    errors = []
+    for path in (STATE_FILE, STATE_BAK):
+        try:
+            with open(path) as f:
+                st = json.load(f)
+            if not isinstance(st, dict):
+                raise ValueError("not an object")
+            if path == STATE_BAK:
+                log.error("state.json was missing or damaged (%s): using state.json.bak",
+                                               "; ".join(errors) or "missing")
+            return st
+        except FileNotFoundError:
+            errors.append(f"{os.path.basename(path)} missing")
+        except (ValueError, UnicodeDecodeError) as e:
+            errors.append(f"{os.path.basename(path)}: {e}")
+    if all(x.endswith("missing") for x in errors):
+        return {}
+    raise RuntimeError("state.json and its copy are damaged (" + "; ".join(errors) + "). Restore it from a "
+                       "ZFS snapshot of the bro-backup folder (config/state.json).")
+
+
 def load_state():
-    try:
-        with open(STATE_FILE) as f:
-            st = json.load(f)
-    except FileNotFoundError:
-        st = {}
+    st = _read_state()
     st.setdefault("settings", {})
     for k, v in DEFAULT_SETTINGS.items():
         st["settings"].setdefault(k, v)
@@ -304,11 +328,24 @@ def load_state():
 
 
 def save_state(st):
+    """Written to a new file, synced to disk, then swapped in. The version before stays as state.json.bak."""
     tmp = STATE_FILE + ".tmp"
     with open(tmp, "w") as f:
         json.dump(st, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
     os.chmod(tmp, 0o600)
+    if os.path.exists(STATE_FILE):
+        os.replace(STATE_FILE, STATE_BAK)  # no state.json for a moment: a crash right now reads the copy
     os.replace(tmp, STATE_FILE)
+    try:
+        fd = os.open(os.path.dirname(STATE_FILE), os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+    except OSError:
+        pass
 
 
 @contextmanager
@@ -371,8 +408,18 @@ def check_ui_password(pw, stored):
         return False
 
 
+def header_text(text):
+    """A header value: as it is when it is plain ASCII, else RFC 2047 encoded (ntfy reads that), so a bro called
+    Łukasz does not make the notification fail."""
+    try:
+        text.encode("ascii")
+        return text
+    except UnicodeEncodeError:
+        return "=?UTF-8?B?" + base64.b64encode(text.encode()).decode() + "?="
+
+
 def send_ntfy(s, title, message, priority="high"):
-    headers = {"Title": title, "Priority": priority, "Tags": "floppy_disk"}
+    headers = {"Title": header_text(title), "Priority": priority, "Tags": "floppy_disk"}
     if s["ntfy_token"]:
         headers["Authorization"] = f"Bearer {s['ntfy_token']}"
     urllib.request.urlopen(urllib.request.Request(s["ntfy_url"], data=message.encode(),

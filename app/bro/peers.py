@@ -1,4 +1,4 @@
-# version : 1.1.4
+# version : 1.2.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/peers.py)
@@ -271,8 +271,9 @@ def receive_hello(user, p):
     """The other side of hello: remember how to reach this bro, and answer with our own tickets."""
     with mutate() as st:
         r = st["receivers"][user]
-        if valid_ticket(p.get("pt")) and (not r.get("peer_pt") or same_identity(r["peer_pt"], p["pt"])):
-            r["peer_pt"] = lan.clean_peer_ticket(p["pt"])
+        pt = lan.clean_peer_ticket(p.get("pt")) if valid_ticket(p.get("pt")) else None
+        if pt and (not r.get("peer_pt") or same_identity(r["peer_pt"], pt)):
+            r["peer_pt"] = pt
         r.update(last_hello=iso(now()), peer_version=version_or_none(p.get("v")))
         if clean_name(p.get("n")):
             r["bro_name"] = clean_name(p.get("n"))
@@ -334,6 +335,9 @@ def receive_address(p):
                 log.warning("New address for %s refused: another identity", d["name"])
                 return None
             dt, pt = lan.clean_peer_ticket(p["dt"]), lan.clean_peer_ticket(p["pt"])
+            if not (dt and pt):
+                log.warning("New address for %s refused: it could not be checked", d["name"])
+                return None
             if (dt, pt) != (d["data_ticket"], d["pair_ticket"]):
                 update_dest(d["id"], data_ticket=dt, pair_ticket=pt, address_changed=iso(now()),
                             last_contact=iso(now()))

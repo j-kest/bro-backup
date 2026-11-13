@@ -177,7 +177,7 @@
     <h2>Invite a bro</h2>
     {% if invite_code %}
       <p class="ok">Send this code to your bro. It is shown only once:</p>
-      <textarea readonly class="code" onclick="this.select()">{{ invite_code }}</textarea>
+      <textarea readonly class="code" data-select-on-click>{{ invite_code }}</textarea>
     {% endif %}
     <form method="post" action="{{ url_for('invite') }}">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
@@ -229,7 +229,7 @@
   <h2>Bros backing up to me</h2>
   {% if help_code %}
     <p class="ok">Help code for {{ help_code['for'] }}. He enters it when setting up his new NAS, together with his own recovery code:</p>
-    <textarea readonly class="code" onclick="this.select()">{{ help_code['code'] }}</textarea>
+    <textarea readonly class="code" data-select-on-click>{{ help_code['code'] }}</textarea>
   {% endif %}
   {% if receivers %}
   {% if receivers|length > 5 %}
@@ -338,7 +338,7 @@
     <p class="muted">No seed found. Put your bro's folder in the <code>import</code> folder inside your bro-backup folder{% if seed_external %}, or use the external disk mounted at /seed{% endif %}.</p>
   {% endif %}
 </section>
-<script>
+<script nonce="{{ csp_nonce() }}">
   (function () {  // refresh what comes in and what runs, without reloading the page
     var els = document.querySelectorAll("[data-incoming], [data-activity]");
     if (!els.length) return;
