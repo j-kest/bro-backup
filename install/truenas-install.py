@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-# version : 1.0.0
+# version : 1.1.1
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (install/truenas-install.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-IMAGE = os.environ.get("BRO_IMAGE", "ghcr.io/j-kest/bro-backup:1.1")
+IMAGE = os.environ.get("BRO_IMAGE", "ghcr.io/j-kest/bro-backup:1")
 APP_NAME = "bro-backup"
 DATASET_NAME = "bro-backup"
 MIDCLT = os.environ.get("BRO_MIDCLT", "midclt")
@@ -39,6 +39,28 @@ def ok(msg):
         print(f"{YELLOW}• not done (dry run): {msg}{END}")
         return
     print(f"{GREEN}✔ {msg}{END}")
+
+
+LIFECYCLE_LOG = "/var/log/app_lifecycle.log"
+
+
+def lifecycle_hint():
+    """What TrueNAS's own log says about the last failure of this app, in plain words."""
+    try:
+        with open(LIFECYCLE_LOG, errors="replace") as f:
+            line = next((x for x in reversed(f.readlines()[-200:]) if f"'{APP_NAME}' app" in x), "")
+    except OSError:
+        return None
+    if "unauthorized" in line or "denied" in line:
+        return (f"TrueNAS may not download {IMAGE}: the image is not public (or does not exist). "
+                "On GitHub: Packages, bro-backup, Package settings, Change visibility, Public.")
+    if "port is already allocated" in line or "address already in use" in line:
+        return "A port is already in use by another app. Run the installer again and choose another web port."
+    if "bind source path does not exist" in line:
+        return "A folder to mount does not exist. Check the pools you chose."
+    if "toomanyrequests" in line:
+        return "The image registry asked to slow down. Wait a few minutes and run the installer again."
+    return f"TrueNAS says: {line.split(' app: ', 1)[-1].strip()[-300:]}" if line else None
 
 
 def err(msg):
@@ -331,6 +353,9 @@ def main():
         install_app(existing_app, pool, mounts, port, visible, tz)
     except ApiError as e:
         err(f"Stopped: {e}")
+        hint = lifecycle_hint()
+        if hint:
+            err(hint)
         err("Whatever was already created stays. You can safely run this installer again.")
         return 1
 

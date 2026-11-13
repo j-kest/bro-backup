@@ -1,6 +1,6 @@
-# version : 0.2
+# version : 0.3
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 13/11/2026
 # Name : restore-from-disk.ps1
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
@@ -17,7 +17,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Disk,     # the disk, or the backup-of-... folder on it
     [string]$To = (Join-Path $HOME "BRO-restore"),   # where the files go
-    [string]$Image = "ghcr.io/j-kest/bro-backup:1.1",
+    [string]$Image = "ghcr.io/j-kest/bro-backup:1",
     [switch]$CodeFromInput,                          # read the recovery code from standard input (for scripts)
     [Parameter(ValueFromPipeline = $true)][string]$CodeInput  # filled by PowerShell when input is piped in
 )

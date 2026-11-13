@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.1.0.zip .
+python3 -m zipfile -e bro-backup-v1.1.1.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -63,7 +63,7 @@ With `--image` pointing to a local image, the installer adds `pull_policy: never
 ```yaml
 services:
   bro-backup:
-    image: ghcr.io/j-kest/bro-backup:1.1
+    image: ghcr.io/j-kest/bro-backup:1
     restart: unless-stopped
     init: true
     environment:
@@ -311,7 +311,7 @@ Getting terabytes back over the internet takes days: your bro's upload speed is 
 2. **You** take the disk home. Only your **recovery code** is needed, no help code and no internet:
    - **On a new NAS**: connect the disk (mounted at `/seed`, or copy the folder into the `import` folder of bro-backup). In the wizard, open "My bro copied my backup to a disk for me", pick the disk and enter your recovery code. Your bros come back, paused, and **Restore** reads from the disk.
    - **On a NAS that still runs** (only the data was lost): connect the disk, open **Restore** next to your bro and click **Restore from the disk**.
-   - **On any PC with Docker Desktop**, without a NAS: `.\install\restore-from-disk.ps1 -Disk E:\`. It asks for your recovery code and puts the newest version of every folder in `BRO-restore` in your user folder. The disk is mounted read-only and the container gets no network. On Linux or macOS: `docker run --rm -it --network none -v /media/disk:/seed:ro -v ~/restored:/out ghcr.io/j-kest/bro-backup:1.1 python main.py restore-from-disk`.
+   - **On any PC with Docker Desktop**, without a NAS: `.\install\restore-from-disk.ps1 -Disk E:\`. It asks for your recovery code and puts the newest version of every folder in `BRO-restore` in your user folder. The disk is mounted read-only and the container gets no network. On Linux or macOS: `docker run --rm -it --network none -v /media/disk:/seed:ro -v ~/restored:/out ghcr.io/j-kest/bro-backup:1 python main.py restore-from-disk`.
 3. Afterwards, backups continue over the internet: only what changed since travels.
 
 The copy is made in a safe order (versions before data), so every version on the disk is complete, even if your NAS was still backing up while it was copied.
@@ -439,13 +439,13 @@ Suggestions for running it as a service:
 
 Once a day BRO Backup asks GitHub for the latest release. When there is a newer version, the overview shows it, with a link to what changed, and you get one notification. Only a plain request to the GitHub API goes out: nothing about your NAS, your bros or your backups. Turn it off under **Settings → Updates**. Updating itself is always up to you.
 
-The image tag in the compose file is the minor version (`1.1`), so fixes such as 1.1.1 arrive under the same tag:
+The image tag in the compose file is the major version (`1`), so every 1.x release (1.1.1, 1.2, ...) arrives under the same tag and you never edit the compose file for it. A 2.0 would need a new tag on purpose, because it may change how things work. Fetching the new image is still a step:
 
 - **TrueNAS**: TrueNAS checks the image itself and shows "Update available" in the row of the app. Select it and choose **Update**.
 - **Any Docker host**: `docker compose pull && docker compose up -d` in the folder of the compose file.
-- **Synology**: in Container Manager, download the image again under **Image**, then restart the project. (Not tried on a real Synology.)
+- **Synology**: in Container Manager, download the image again under **Image**, then restart the project. Or let the NAS do it: **Control Panel → Task Scheduler → Create → Scheduled Task → User-defined script**, user `root`, weekly, with `cd /volume1/docker/bro-backup-app && docker compose pull && docker compose up -d` (change the folder if your project is elsewhere). Compose only restarts the app when the image really changed. (Not tried on a real Synology.)
 
-A new minor version (1.2) needs a new tag: edit the app and change `1.1` to `1.2`. Coming from 0.10 or 1.0, change the tag to `1.1` once. Bros on different versions keep working together: 0.10.2 backs up to and from bros on 0.9.0, and pairs made on 0.9.0 get the new features once both sides have updated (see Tested). Update to 0.10.2 rather than 0.10.0 or 0.10.1: only 0.10.2 links pairs made on 0.9.
+Coming from an older tag (`0.10`, `1.0` or `1.1`), change it to `1` once. Bros on different versions keep working together: 0.10.2 backs up to and from bros on 0.9.0, and pairs made on 0.9.0 get the new features once both sides have updated (see Tested). Update to 0.10.2 rather than 0.10.0 or 0.10.1: only 0.10.2 links pairs made on 0.9.
 
 The overview shows which version each bro runs, next to his name: in orange when it is older than yours. The self-check lists the bros that should update.
 
@@ -483,7 +483,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.1.0` (the update check reads the latest release; `1.1.0` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.1.1` (the update check reads the latest release; `1.1.1` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.
