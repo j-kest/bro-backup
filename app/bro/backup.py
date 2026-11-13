@@ -1,4 +1,4 @@
-# version : 1.2.0
+# version : 1.3.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/backup.py)
@@ -37,6 +37,7 @@ from .core import (
     SEED_MARKER,
     SNAP_TIME_RE,
     activity,
+    conn_paths,
     dest_ports,
     dir_size,
     sources_size,
@@ -357,7 +358,8 @@ def restic_backup(d, label, repo_path=None, deadline=None, force=False):
     sources_info = []
     for i in plan:  # per folder what was read from where, and the counts the ransomware check needs
         x = {"key": i["key"], "origin": i["origin"], "note": i["note"]}
-        x.update({k: (i.get("sum") or {}).get(k) or 0 for k in ("files_new", "files_changed", "files_unmodified")})
+        x.update({k: (i.get("sum") or {}).get(k) or 0 for k in ("files_new", "files_changed", "files_unmodified",
+                                                                 "data_added")})
         x["snapshot_id"] = (i.get("sum") or {}).get("snapshot_id")
         sources_info.append(x)
     return totals, ("\n".join(warnings) or None), sources_info
@@ -647,12 +649,14 @@ def run_backup(dest_id, scheduled=False):
             if dump_warn:
                 warning = "\n".join(dump_warn + ([warning] if warning else []))
         except WindowClosed as w:
+            record_run(dest_id, "interrupted")
             update_dest(dest_id, last_error=None, window_stop=iso(now()),
                         last_warning=f"Backup window closed during {w}. It continues in the next window, "
                                      "without sending again what was already uploaded.")
             log.info("Backup to %s paused by the backup window", d["name"])
             return
         except Paused as w:
+            record_run(dest_id, "interrupted")
             update_dest(dest_id, last_error=None, pause_stop=iso(now()),
                         last_warning=f"Paused during {w}. It continues when you resume, "
                                      "without sending again what was already uploaded.")
@@ -723,7 +727,14 @@ def run_backup(dest_id, scheduled=False):
                                  "src": {x["key"]: [x["files_new"], x["files_changed"], x["files_unmodified"],
                                                     any(y.get("key") == x["key"] for y in d.get("last_sources") or [])]
                                          for x in sources_info},
+                                 "src_added": {x["key"]: x.get("data_added") or 0 for x in sources_info},
+                                 "path": (conn_paths.get(dest_id) or {}).get("type"),
                                  "alarm": bool(reasons)})
+        record_run(dest_id, "ok")
+        if not parse((get_dest(dest_id) or {}).get("repo_stats", {}).get("at")) or \
+                now() - parse(get_dest(dest_id)["repo_stats"]["at"]) >= datetime.timedelta(days=7):
+            activity[dest_id] = "Measuring what compression and deduplication save"
+            measure_repo(get_dest(dest_id), [x.get("snapshot_id") for x in sources_info])
 
         prev = d.get("restore_test") or {}
         last_test = parse(prev.get("at"))
@@ -732,10 +743,41 @@ def run_backup(dest_id, scheduled=False):
             checks.record_restore_test(d, checks.restore_test(get_dest(dest_id)))
     except Exception as e:
         update_dest(dest_id, last_error=str(e), no_room=isinstance(e, NoRoom) or None)
+        record_run(dest_id, "no_room" if isinstance(e, NoRoom) else "failed")
         notify_failure(dest_id, str(e))
     finally:
         activity.pop(dest_id, None)
         lock.release()
+
+
+RUNS_MAX = 500
+
+
+def record_run(dest_id, outcome):
+    """Every backup run with its outcome (ok, failed, no_room, interrupted), for the reliability statistics.
+    The history only holds successful backups."""
+    with mutate() as st:
+        for x in st["destinations"]:
+            if x["id"] == dest_id:
+                x["runs"] = (x.get("runs") or [])[-(RUNS_MAX - 1):] + [{"at": iso(now()), "outcome": outcome}]
+
+
+def measure_repo(d, snapshot_ids):
+    """Weekly: what the backup at the bro takes (packed and compressed) against the size of what it holds.
+    Both come from the index (restic stats), so nothing big is downloaded."""
+    def stats(*args):
+        try:
+            p = restic(d, "--no-lock", "stats", "--json", *args, timeout=1800, read=True)
+            return json.loads(p.stdout) if p.returncode == 0 else None
+        except (subprocess.TimeoutExpired, ValueError):
+            return None
+    raw = stats("--mode", "raw-data")
+    ids = [i for i in snapshot_ids if isinstance(i, str) and re.fullmatch(r"[0-9a-f]{8,64}", i)]
+    full = stats("--mode", "restore-size", *ids) if ids else None
+    if isinstance(raw, dict) and isinstance(full, dict):
+        update_dest(d["id"], repo_stats={"at": iso(now()), "stored": raw.get("total_size") or 0,
+                                         "uncompressed": raw.get("total_uncompressed_size") or 0,
+                                         "files": full.get("total_size") or 0})
 
 
 FAIL_REPEAT = datetime.timedelta(hours=24)

@@ -1,6 +1,6 @@
-# version : 0.10
+# version : 1.3.0
 # created by : JK and CF
-# last edited : 01/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/charts.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -112,6 +112,11 @@ def line(entries, key, fmt, label):
     parts.append(f'<line x1="{PAD_L}" x2="{W - PAD_R}" y1="{PAD_T + plot_h}" y2="{PAD_T + plot_h}" stroke="var(--muted)" stroke-width="1"/>')
     parts += _xlabels([(x, local_time(e["at"])[:10]) for (e, _), (x, _) in zip(pts_in, xy)])
     return _svg(parts, label)
+
+
+def mbit_fmt(bps):
+    v = f"{bps / 1e6:.1f}".rstrip("0").rstrip(".") if bps else "0"
+    return f"{v} Mbit/s"
 
 
 def duration_fmt(s):

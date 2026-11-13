@@ -1,4 +1,4 @@
-# version : 1.2.0
+# version : 1.3.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/web.py)
@@ -41,6 +41,7 @@ from . import (
     scheduler,
     space,
     speed,
+    stats,
     updates,
     urbackup,
 )
@@ -146,7 +147,7 @@ def csp_nonce():
 
 
 app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL, bro_version=bro_version,
-                             csp_nonce=csp_nonce,
+                             csp_nonce=csp_nonce, timedelta=datetime.timedelta,
                              nas_dir=NAS_DIR,
                              two_step=lambda: auth.two_step_on())
 
@@ -1191,9 +1192,34 @@ def dest_history(dest_id):
     recent = hist[-60:]
     graphs = [("Data sent per backup", charts.bars(recent, "added", human_bytes, "Data sent per backup")),
               (f"Space used at {d['name']}", charts.line(hist, "usage", human_bytes, f"Space used at {d['name']}")),
-              ("Duration per backup", charts.bars(recent, "seconds", charts.duration_fmt, "Duration per backup"))]
+              ("Duration per backup", charts.bars(recent, "seconds", charts.duration_fmt, "Duration per backup")),
+              ("Upload speed per backup", charts.line(stats.speeds(d), "bps", charts.mbit_fmt, "Upload speed per backup"))]
     total_sent = sum(e.get("added") or 0 for e in hist)
     return render_template("history.html", d=d, hist=hist, graphs=graphs, total_sent=total_sent)
+
+@app.get("/stats")
+def stats_page():
+    st = load_state()
+    bros = []
+    for d in st["destinations"]:
+        if d.get("mode") == "revoked":
+            continue
+        counts, n = stats.paths(d)
+        bros.append({"d": d, "rel": stats.reliability(d), "paths": counts, "path_n": n, "save": stats.savings(d)})
+    recv = []
+    hist = st.get("recv_history") or {}
+    for user, r in st["receivers"].items():
+        if not r.get("accepted"):
+            continue
+        name = r.get("bro_name") or r["name"]
+        series = hist.get(user) or []
+        recv.append({"name": name, "user": user, "chart": charts.line(series, "v", human_bytes, f"Space {name} uses here")})
+    folders = stats.folder_growth(st)
+    return render_template("stats.html", tot=stats.totals(st), fc=stats.forecasts(st), bros=bros, recv=recv,
+                           folders=folders[:12], folder_max=max([f["bytes"] for f in folders] + [1]),
+                           own=charts.line(st.get("space_history") or [], "v", human_bytes, "Used in the bro-backup folder"),
+                           soon=stats.SOON_DAYS, trend=stats.TREND_DAYS, now_=now())
+
 
 @app.post("/databases/scan")
 def databases_scan():

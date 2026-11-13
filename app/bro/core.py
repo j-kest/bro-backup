@@ -1,4 +1,4 @@
-# version : 1.2.0
+# version : 1.3.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/core.py)
@@ -14,6 +14,7 @@ import logging
 import os
 import re
 import secrets
+import shutil
 import smtplib
 import urllib.parse
 import ssl
@@ -24,7 +25,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -335,8 +336,15 @@ def save_state(st):
         f.flush()
         os.fsync(f.fileno())
     os.chmod(tmp, 0o600)
-    if os.path.exists(STATE_FILE):
-        os.replace(STATE_FILE, STATE_BAK)  # no state.json for a moment: a crash right now reads the copy
+    if os.path.exists(STATE_FILE):  # the copy is a second name for the current file: state.json never disappears
+        new_bak = STATE_BAK + ".new"
+        try:
+            if os.path.lexists(new_bak):
+                os.remove(new_bak)
+            os.link(STATE_FILE, new_bak)
+            os.replace(new_bak, STATE_BAK)
+        except OSError:
+            shutil.copy2(STATE_FILE, STATE_BAK)
     os.replace(tmp, STATE_FILE)
     try:
         fd = os.open(os.path.dirname(STATE_FILE), os.O_RDONLY)

@@ -109,6 +109,12 @@
   .badge.muted { color:var(--muted); border-color:var(--line); }
   .badge.err-b { color:var(--err); border-color:var(--err); }
   details summary { cursor:pointer; color:var(--muted); }
+  .tiles { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:12px; margin-bottom:16px; }
+  .tile { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:14px 16px; }
+  .tile .v { font-size:24px; font-weight:800; letter-spacing:-.01em; }
+  .tile .l { color:var(--muted); font-size:13px; }
+  .hbar { height:8px; border-radius:4px; background:var(--accent); min-width:2px; }
+  .hbar-track { background:var(--line); border-radius:4px; }
   @media (max-width:640px) { .hide-sm { display:none; } }
 </style>
 </head>
@@ -117,6 +123,7 @@
 <header><div class="in">
   <a class="brand" href="{{ url_for('index') }}">BRO Backup</a>
   <a href="{{ url_for('index') }}"{% if request.endpoint == 'index' %} aria-current="page"{% endif %}>Overview</a>
+  <a href="{{ url_for('stats_page') }}"{% if request.endpoint == 'stats_page' %} aria-current="page"{% endif %}>Statistics</a>
   <a href="{{ url_for('settings_page') }}"{% if request.endpoint == 'settings_page' %} aria-current="page"{% endif %}>Settings</a>
   <a href="{{ url_for('security_page') }}"{% if request.endpoint == 'security_page' %} aria-current="page"{% endif %}>Security</a>
   <a href="{{ url_for('selfcheck_page') }}"{% if request.endpoint == 'selfcheck_page' %} aria-current="page"{% endif %}>Self-check</a>

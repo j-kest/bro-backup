@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Statistics</h1>
+<p class="sub">From what BRO Backup records with every backup, a daily measurement and a weekly look at each backup at your bros.</p>
+
+<div class="tiles">
+  <div class="tile"><div class="v">{{ tot.protected|bytes if tot.protected else '-' }}</div><div class="l">your folders</div></div>
+  <div class="tile"><div class="v">{{ tot.at_bros|bytes }}</div><div class="l">stored at your bros</div></div>
+  <div class="tile"><div class="v">{{ tot.for_others|bytes }}</div><div class="l">you store for bros</div></div>
+  <div class="tile"><div class="v">{{ tot.sent_month|bytes }}</div><div class="l">sent since {{ tot.month.strftime('%d/%m') }}</div></div>
+  <div class="tile"><div class="v">{{ tot.received_month|bytes }}</div><div class="l">received since {{ tot.month.strftime('%d/%m') }}</div></div>
+</div>
+
+<section>
+  <h2>When space runs out</h2>
+  <p class="muted">At the growth of the last {{ trend }} days. You get a notification when something is full within {{ soon }} days.</p>
+  <table>
+    <tr><th>Where</th><th>Used</th><th class="hide-sm">Growth</th><th>Full</th></tr>
+    {% for f in fc %}
+    <tr><td>{{ f.what }}</td>
+      <td>{% if f.used is not none %}{{ f.used|bytes }}{% else %}-{% endif %}{% if f.limit %} of {{ f.limit|bytes }}{% endif %}</td>
+      <td class="hide-sm">{% if f.per_day is not none %}{{ (f.per_day * 30)|bytes if f.per_day > 0 else '0 B' }} per month{% else %}<span class="muted">not enough history yet</span>{% endif %}</td>
+      <td>{% if not f.limit %}<span class="muted">no limit</span>
+        {% elif f.days is none %}<span class="muted">{{ 'not at this pace' if f.per_day is not none else '-' }}</span>
+        {% elif f.days < 1 %}<span class="err">full</span>
+        {% else %}{% set when = (now_ + timedelta(days=f.days)) %}<span class="{{ 'err' if f.days < 30 else ('warn' if f.days < 90 else '') }}">around {{ when.astimezone().strftime('%d/%m/%Y') }}</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+{% if bros %}
+<section>
+  <h2>My backups at bros (last 30 days)</h2>
+  <table>
+    <tr><th>Bro</th><th>Succeeded</th><th class="hide-sm">Average duration</th><th class="hide-sm">Connection</th><th>Saved by compression</th></tr>
+    {% for b in bros %}
+    <tr><td><a href="{{ url_for('dest_history', dest_id=b.d.id) }}">{{ b.d.name }}</a></td>
+      <td>{% if b.rel.runs %}<span class="{{ 'ok' if b.rel.share >= 0.95 else ('warn' if b.rel.share >= 0.8 else 'err') }}">{{ (b.rel.share * 100)|round|int }}%</span>
+          <span class="muted">({{ b.rel.ok }} of {{ b.rel.runs }}{% if b.rel.interrupted %}, {{ b.rel.interrupted }} paused or stopped by the window{% endif %})</span>
+          {% if b.rel.since_failure %}<br><span class="muted">last failure {{ b.rel.since_failure|ltime }}</span>{% endif %}
+        {% else %}<span class="muted">no backups yet</span>{% endif %}</td>
+      <td class="hide-sm">{{ b.rel.avg_seconds|duration if b.rel.avg_seconds else '-' }}</td>
+      <td class="hide-sm">{% if b.path_n %}{% for k, n in b.paths|dictsort %}<span class="badge {{ 'warn' if k == 'relay' else 'muted' }}">{{ {'direct': 'direct', 'lan': 'local network', 'relay': 'via relay'}.get(k, 'unknown') }} {{ (n * 100 / b.path_n)|round|int }}%</span>{% endfor %}{% else %}-{% endif %}</td>
+      <td>{% if b.save %}{{ (b.save.share * 100)|round|int }}% <span class="muted">({{ b.save.files|bytes }} in {{ b.save.stored|bytes }})</span>{% else %}<span class="muted">measured weekly</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="margin:8px 0 0">Click a bro for his charts: data sent, space used, duration and upload speed per backup.
+    "Saved by compression" compares the size of what the backup holds with what it takes at your bro, after compression and deduplication.</p>
+</section>
+{% endif %}
+
+{% if folders %}
+<section>
+  <h2>What grows most (last 30 days)</h2>
+  <table>
+    <tr><th>Folder</th><th>New data sent</th><th class="hide-sm" style="width:40%"></th></tr>
+    {% for f in folders %}
+    <tr><td><code>{{ f.key }}</code></td><td>{{ f.bytes|bytes }}</td>
+      <td class="hide-sm"><div class="hbar-track"><div class="hbar" style="width:{{ (f.bytes * 100 / folder_max)|round(1) }}%"></div></div></td></tr>
+    {% endfor %}
+  </table>
+  <p class="muted" style="margin:8px 0 0">After deduplication and compression: what really went to your bros. Folders that grow fast fill your space at your bros first.</p>
+</section>
+{% endif %}
+
+{% if recv %}
+<section>
+  <h2>Bros backing up to me</h2>
+  {% for r in recv %}
+    <h3 style="font-size:15px; margin:12px 0 4px">{{ r.name }}</h3>
+    {% if r.chart %}{{ r.chart|safe }}{% else %}<p class="muted">A chart appears after a few days: the space he uses is measured once a day.</p>{% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+
+<section>
+  <h2>The bro-backup folder on this NAS</h2>
+  {% if own %}{{ own|safe }}{% else %}<p class="muted">A chart appears after a few days: it is measured once a day.</p>{% endif %}
+</section>
+{% endblock %}

@@ -5,7 +5,7 @@
 
 Encrypted off-site backups to a friend's NAS, and his to yours. No subscription, no account, no open ports. One app, one code to exchange.
 
-> **v1.2.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
+> **v1.3.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
 
 ## How it works
 
@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.2.0.zip .
+python3 -m zipfile -e bro-backup-v1.3.0.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -276,6 +276,17 @@ By default a backup runs until it is done. With **Settings → Stop at** you set
 
 **Settings → Limit upload** applies all day. Fill in **At night** too, for example 0 (no limit) between 22:00 and 07:00, and BRO Backup switches between the two. A backup that runs past the switch is stopped and resumed with the new limit right away. That costs at most about 10 minutes of upload, because restic saves its progress at least every 10 minutes.
 
+## Statistics
+
+**Statistics** in the menu shows:
+- totals: how big your folders are, what is stored at your bros, what you store for bros, what was sent and received this month;
+- when space runs out, at the growth of the last 30 days: your space at each bro, the space you gave each bro, and the bro-backup folder on this NAS. You get one notification when one of them is full within 30 days;
+- per bro: how many backups succeeded in the last 30 days, the average duration, the last failure, how the connection went (direct, local network or via relay), and what compression and deduplication save (measured weekly);
+- which folders grow most: what each folder really sent to your bros in the last 30 days;
+- per bro that backs up to you: the space he uses over time.
+
+The **History** of a bro adds the upload speed per backup. Growth needs a few days of history before it shows.
+
 ## History
 
 **History** next to a bro shows charts of the data sent per backup, the space used at your bro and how long each backup took, plus a table of every backup. It keeps about a year.
@@ -506,7 +517,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.2.0` (the update check reads the latest release; `1.2.0` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.3.0` (the update check reads the latest release; `1.3.0` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

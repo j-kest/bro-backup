@@ -1,4 +1,4 @@
-# version : 1.2.0
+# version : 1.3.0
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/scheduler.py)
@@ -11,7 +11,7 @@ import os
 import threading
 import time
 
-from . import alarm, backup, kept, nas, pairing, peers, probro, procs, receiving, recovery, reports, space, updates, urbackup
+from . import alarm, backup, kept, nas, stats, pairing, peers, probro, procs, receiving, recovery, reports, space, updates, urbackup
 from .core import (
     CODE_DAYS,
     PAUSED_MODES,
@@ -129,6 +129,8 @@ def scheduler():
                     last_usage = time.time()
                     kept.sweep_all()
                     refresh_receive_stats()
+                    stats.sample_daily()
+                    stats.check_running_out()
                     reports.check_silent_bros(s)
                     space.check()
                     alarm.remind()

@@ -8,6 +8,7 @@
   <h2>{{ title }}</h2>
   {{ svg|safe }}
   {% if loop.index == 2 %}<p class="muted" style="margin:6px 0 0">Measured just before each backup.</p>{% endif %}
+  {% if loop.index == 4 %}<p class="muted" style="margin:6px 0 0">Data sent divided by the time the backup took, for backups that sent at least 50 MiB. Reading and comparing files counts in that time too.</p>{% endif %}
 </section>
 {% endif %}{% endfor %}
 {% if hist %}
