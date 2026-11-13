@@ -445,7 +445,11 @@ Once a day BRO Backup asks GitHub for the latest release. When there is a newer 
 
 The image tag in the compose file is the major version (`1`), so every 1.x release (1.1.1, 1.2, ...) arrives under the same tag and you never edit the compose file for it. A 2.0 would need a new tag on purpose, because it may change how things work. Fetching the new image is still a step:
 
-- **TrueNAS**: TrueNAS checks the image itself and shows "Update available" in the row of the app. Select it and choose **Update**.
+- **TrueNAS**: in **System → Shell**:
+  ```sh
+  curl -fsSL https://raw.githubusercontent.com/j-kest/bro-backup/main/install/truenas-install.py -o /tmp/bro-install.py && sudo python3 /tmp/bro-install.py --update
+  ```
+  It fetches the newest image and restarts the app, without questions, and says which version you went from and to. TrueNAS's own "Update available" for custom apps is not reliable, and a plain `docker pull` does not restart the app on the new image.
 - **Any Docker host**: `docker compose pull && docker compose up -d` in the folder of the compose file.
 - **Synology**: in Container Manager, download the image again under **Image**, then restart the project. Or let the NAS do it: **Control Panel → Task Scheduler → Create → Scheduled Task → User-defined script**, user `root`, weekly, with `cd /volume1/docker/bro-backup-app && docker compose pull && docker compose up -d` (change the folder if your project is elsewhere). Compose only restarts the app when the image really changed. (Not tried on a real Synology.)
 

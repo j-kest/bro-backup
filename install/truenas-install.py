@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# version : 1.1.1
+# version : 1.1.3
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (install/truenas-install.py)
@@ -213,11 +213,15 @@ def main():
     ap = argparse.ArgumentParser(description="Install BRO Backup on TrueNAS SCALE")
     ap.add_argument("--dry-run", action="store_true", help="only show what would happen")
     ap.add_argument("--image", help="use this image instead, e.g. a locally built bro-backup:1.1")
+    ap.add_argument("--update", action="store_true",
+                    help="only fetch the newest image and restart the app, without questions")
     opts = ap.parse_args()
     DRY = opts.dry_run
     global IMAGE
     if opts.image:
         IMAGE = opts.image
+    if opts.update:
+        return update_only()
 
     print(f"{BOLD}BRO Backup installer for TrueNAS SCALE{END}")
     print("Encrypted off-site backups to a friend's NAS. Nothing is changed until you confirm.\n")
@@ -373,6 +377,65 @@ def main():
     return 0
 
 
+def image_version(image):
+    """The BRO Backup version inside a local image (the label the build puts on it), or None."""
+    try:
+        p = subprocess.run(["docker", "image", "inspect", image, "--format",
+                            '{{index .Config.Labels "org.opencontainers.image.version"}}'],
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    v = p.stdout.strip()
+    return v if p.returncode == 0 and v and v != "<no value>" else None
+
+
+def running_image():
+    """The image the app uses now, from TrueNAS's view of it."""
+    apps = call("app.query", json.dumps([["name", "=", APP_NAME]]),
+                json.dumps({"extra": {"retrieve_config": False}})) or []
+    images = ((apps[0].get("active_workloads") or {}).get("images") or []) if apps else []
+    return apps, (images[0] if images else None)
+
+
+def pull_and_redeploy():
+    """Fetch the newest image for the tag and start the app on it. TrueNAS's own update keeps an image
+    it already has under the same tag, so an update without this stays on the old version."""
+    job = call("app.pull_images", APP_NAME, json.dumps({"redeploy": True}), write=True)
+    wait_job(job, "Fetching the newest image and restarting")
+
+
+def update_only():
+    print(f"{BOLD}BRO Backup: update{END}")
+    if not shutil.which(MIDCLT):
+        err("midclt not found. Run this in the shell of TrueNAS SCALE.")
+        return 1
+    try:
+        apps, image = running_image()
+        if not apps:
+            err(f"The app '{APP_NAME}' is not installed. Run this installer without --update first.")
+            return 1
+        before = image_version(image) if image else None
+        if image and "/" not in image.split(":")[0]:
+            warn(f"The app uses a locally built image ({image}): build the new one first, then run "
+                 f"this installer with --image again.")
+            return 1
+        pull_and_redeploy()
+    except ApiError as e:
+        err(f"Stopped: {e}")
+        hint = lifecycle_hint()
+        if hint:
+            err(hint)
+        return 1
+    after = image_version(image) if image else None
+    if DRY:
+        return 0
+    if before and after and before == after:
+        ok(f"Already the newest version: {after}")
+    else:
+        ok(f"Updated{f' from {before}' if before else ''} to {after or 'the newest version'}")
+    return 0
+
+
 def install_app(existing_app, pool, mounts, port, visible, tz):
     """Install or update the app. If TrueNAS refuses a pool root as a host path, fall back to its datasets."""
     for attempt in ("pools", "datasets"):
@@ -381,7 +444,9 @@ def install_app(existing_app, pool, mounts, port, visible, tz):
             if existing_app:
                 job = call("app.update", APP_NAME, json.dumps({"custom_compose_config_string": cfg}), write=True)
                 wait_job(job, "Updating the app")
-                ok(f"App '{APP_NAME}' updated")
+                if "/" in IMAGE.split(":")[0]:  # from a registry: make sure the newest image for the tag runs
+                    pull_and_redeploy()
+                ok(f"App '{APP_NAME}' updated" + (f" to {image_version(IMAGE)}" if image_version(IMAGE) else ""))
             else:
                 job = call("app.create", json.dumps({"app_name": APP_NAME, "custom_app": True,
                                                      "custom_compose_config_string": cfg}), write=True)
