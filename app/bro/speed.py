@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.1.3
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/speed.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -21,14 +21,12 @@ from .core import (
     SPEED_SECONDS,
     activity,
     conn_paths,
-    dir_size,
     get_dest,
     iso,
     job_locks,
     log,
     now,
     settings,
-    sources_size,
     update_dest,
 )
 
@@ -108,14 +106,7 @@ def speed_download(port, d, seconds):
 
 def selected_size():
     """Total size of the selected folders, cached for 6 hours (walking a big pool takes a while)."""
-    s = settings()
-    key = json.dumps(sorted(s["sources"]))
-    cached = sources_size.get(key)
-    if cached and time.time() - cached["at"] < 6 * 3600:
-        return cached["bytes"]
-    total = sum(dir_size(p) for p in s["sources"] if os.path.isdir(p))
-    sources_size[key] = {"bytes": total, "at": time.time()}
-    return total
+    return backup.sources_bytes()
 
 
 def run_speedtest(dest_id):

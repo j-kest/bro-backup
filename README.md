@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.1.2.zip .
+python3 -m zipfile -e bro-backup-v1.1.3.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -406,6 +406,7 @@ Only someone with admin access to the NAS itself can do this.
 | "Login refused by your bro" | His NAS was recovered, or he removed your login by hand | Ask him for a new code |
 | "Stopped by ..." | Your bro no longer stores your backups | Remove him with × and pair with someone else |
 | A bro is "not reachable" after a new internet connection | His address changed while the relays were not reachable either | Wait for the next check-in (a few hours), or ask him to open BRO Backup: his NAS sends the new address within a minute of starting |
+| "Not started: your folders hold ..." | Before a first backup (or after you added folders) BRO Backup measures your folders, and they do not fit in the space your bro gave you | Ask him for more space with **ask for more**, choose fewer folders, or send the first backup on a disk |
 | "Quota at ... reached" | The space your bro gave you is used up | Ask your bro for more: he changes it next to your name under "Bros backing up to me". Or select fewer folders |
 | A folder is read "live" | No recent ZFS snapshot of its dataset, or the folder holds child datasets | Add a daily periodic snapshot task for that dataset in TrueNAS; for child datasets, tick those instead of the parent |
 | Restore test: "Data at your bro is damaged" | Disk or memory problems at your bro | Ask him to check his pool (scrub) and disks. Then **Restore → Run a full check**, and **Repair** if it finds damage |
@@ -491,7 +492,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.1.2` (the update check reads the latest release; `1.1.2` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.1.3` (the update check reads the latest release; `1.1.3` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

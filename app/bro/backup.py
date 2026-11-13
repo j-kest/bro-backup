@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.1.3
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -38,6 +38,7 @@ from .core import (
     activity,
     dest_ports,
     dir_size,
+    sources_size,
     get_dest,
     human_bytes,
     human_secs,
@@ -477,6 +478,39 @@ def refresh_bro_limit(d):
     return get_dest(d["id"]) or d
 
 
+FIT_MARGIN = 1.2  # restic compresses and deduplicates: data may take a bit less than it does on the NAS
+
+
+def sources_key(s=None):
+    return json.dumps(sorted((s or settings())["sources"]))
+
+
+def sources_bytes(s=None):
+    """Total size of the selected folders, cached for 6 hours (walking a big pool takes a while)."""
+    key = sources_key(s)
+    cached = sources_size.get(key)
+    if cached and time.time() - cached["at"] < 6 * 3600:
+        return cached["bytes"]
+    total = sum(dir_size(p) for p in (s or settings())["sources"] if os.path.isdir(p))
+    sources_size[key] = {"bytes": total, "at": time.time()}
+    return total
+
+
+def check_fits(d, info):
+    """Before a first backup, or after folders were added: will it fit in the space the bro gave us at all?
+    Better to say so now than after days of uploading. Photos and videos hardly compress, so the size on the
+    NAS is a fair estimate; FIT_MARGIN leaves room for what restic saves on other files."""
+    q = info.get("quota_gib") if isinstance(info, dict) else None  # None: the bro was not reachable, check later
+    if not q or (d.get("last_ok") and d.get("last_sources_key") == sources_key()):
+        return
+    free = max(0, q * GIB - (info.get("usage") or 0))
+    need = sources_bytes()
+    if need > free * FIT_MARGIN:
+        raise JobError(f"Not started: your folders hold {human_bytes(need)}, and {d['name']} gave you {q} GiB "
+                       f"({human_bytes(free)} free). That cannot fit. Ask {d['name']} for more space (ask for more), "
+                       "choose fewer folders in Settings, or send the first backup on a disk.")
+
+
 def check_quota(d):
     try:
         info = bro_status(d)
@@ -543,7 +577,9 @@ def run_backup(dest_id, scheduled=False):
         procs.ensure_tunnel(d)
 
         activity[dest_id] = "Checking space at your bro"
-        check_quota(d)
+        info = check_quota(d)
+        activity[dest_id] = "Measuring your folders"
+        check_fits(get_dest(dest_id), info)
         activity[dest_id] = "Checking connection and repository"
         ensure_repo(d)
         d = get_dest(dest_id)
@@ -615,7 +651,7 @@ def run_backup(dest_id, scheduled=False):
                 raise JobError("Integrity check found problems:\n" + last_lines(p.stderr))
             update_dest(dest_id, last_check=iso(now()))
 
-        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None,
+        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(),
                     last_added=summary.get("data_added"), last_files={k: summary.get(k) for k in
                                                                       ("files_new", "files_changed", "files_unmodified")},
                     last_processed=summary.get("total_bytes_processed"))
