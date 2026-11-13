@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.1.2
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/nas.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -107,29 +107,54 @@ def sub_datasets(path):
     return sorted(found)
 
 
+MAX_CHILDREN = 500
+
+
+def _visible_subdirs(path):
+    try:
+        items = [e for e in os.scandir(path) if e.is_dir(follow_symlinks=False)]
+    except OSError:
+        return []
+    return [e for e in sorted(items, key=lambda x: x.name.lower())
+            if not e.name.startswith((".", "@", "#")) and e.name not in SKIP_DIRS  # @eaDir, #recycle: Synology
+            and not same_dir(e.path, DATA_DIR) and not same_dir(e.path, SEED_MOUNT)]
+
+
+def inside_nas(path):
+    """The real path when it is a folder at or below /nas, else None. Links that lead out of /nas are refused."""
+    real_nas = os.path.realpath(NAS_DIR)
+    rp = os.path.realpath(path or "")
+    return rp if (rp == real_nas or rp.startswith(real_nas + os.sep)) and os.path.isdir(rp) else None
+
+
+def children(path):
+    """The folders right below this folder under /nas, for opening the folder picker one level deeper.
+    has_sub tells whether opening it again would show anything."""
+    real = inside_nas(path)
+    if not real:
+        return None
+    out = []
+    for e in _visible_subdirs(path)[:MAX_CHILDREN]:
+        out.append({"path": e.path, "label": e.name, "has_sub": bool(_visible_subdirs(e.path)[:1])})
+    return out
+
+
 def list_folders():
     """Folders at level 1 and 2 under /nas, plus the child datasets of level 2, for the folder picker."""
     out = []
     if not os.path.isdir(NAS_DIR):
         return out
 
-    def subdirs(path):
-        try:
-            items = [e for e in os.scandir(path) if e.is_dir(follow_symlinks=False)]
-        except OSError:
-            return []
-        return [e for e in sorted(items, key=lambda x: x.name.lower())
-                if not e.name.startswith((".", "@", "#")) and e.name not in SKIP_DIRS  # @eaDir, #recycle: Synology
-                and not same_dir(e.path, DATA_DIR) and not same_dir(e.path, SEED_MOUNT)]
+    subdirs = _visible_subdirs
     for e in subdirs(NAS_DIR):
         out.append({"path": e.path, "label": e.name, "depth": 1})
         for s in subdirs(e.path):
-            out.append({"path": s.path, "label": s.name, "depth": 2})
+            out.append({"path": s.path, "label": s.name, "depth": 2, "has_sub": bool(subdirs(s.path)[:1])})
             real = os.path.realpath(s.path)
             for c in sub_datasets(real):  # child datasets: ticked one by one, each is read from its own snapshot
                 if os.path.dirname(c) == real and not os.path.basename(c).startswith("."):
-                    out.append({"path": os.path.join(s.path, os.path.basename(c)), "label": os.path.basename(c),
-                                "depth": 3})
+                    p = os.path.join(s.path, os.path.basename(c))
+                    out.append({"path": p, "label": os.path.basename(c), "depth": 3, "has_sub": bool(subdirs(p)[:1])})
     return out
 
 

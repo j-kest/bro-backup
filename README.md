@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.1.1.zip .
+python3 -m zipfile -e bro-backup-v1.1.2.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -151,6 +151,10 @@ Under **Settings → Schedule**, "Bros may send to me at most" sets how fast eac
 ## Restoring files
 
 **Restore** next to a bro lists every version. **Restore all** brings back a whole folder as it was then. **Browse** opens a version like a file manager: open folders, search by name (`invoice`, or a pattern like `*.pdf`), tick the files and folders you need and click **Restore selected**. Everything goes to the `restore` folder inside your bro-backup folder, so nothing on your NAS is ever overwritten.
+
+## Choosing folders
+
+Settings shows the first two levels of your NAS. Click ▸ next to a folder to open it and tick folders deeper down; a ticked folder includes everything below it. Folders you chose deeper down open by themselves when you come back to Settings.
 
 ## Leaving things out
 
@@ -483,7 +487,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.1.1` (the update check reads the latest release; `1.1.1` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.1.2` (the update check reads the latest release; `1.1.2` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

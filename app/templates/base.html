@@ -50,6 +50,13 @@
   .check { font-weight:400; display:flex; gap:8px; align-items:center; margin:4px 0; }
   .check.d2 { margin-left:26px; }
   .check.d3 { margin-left:52px; }
+  .frow { display:flex; align-items:center; gap:4px; }
+  .frow .check { margin:2px 0; }
+  .frow.d2 { margin-left:22px; } .frow.d3 { margin-left:44px; } .frow.d4 { margin-left:66px; } .frow.d5 { margin-left:88px; }
+  .frow.d6 { margin-left:110px; } .frow.d7 { margin-left:132px; } .frow.d8 { margin-left:154px; }
+  .fopen { width:22px; height:22px; padding:0; border:none; background:none; color:var(--muted); font-size:13px; cursor:pointer; }
+  .fopen:hover { background:none; color:var(--accent); border:none; }
+  .fopen-gap { display:inline-block; width:22px; }
   .savebar { position:sticky; bottom:0; z-index:5; display:flex; justify-content:flex-end; align-items:center; gap:12px;
              background:var(--card); border:1px solid var(--line); border-radius:10px; padding:10px 16px;
              padding-bottom:calc(10px + env(safe-area-inset-bottom, 0px)); box-shadow:0 -4px 12px rgba(0,0,0,.12); }

@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.1.2
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -139,6 +139,7 @@ def bro_version(v):
 
 
 app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL, bro_version=bro_version,
+                             nas_dir=NAS_DIR,
                              two_step=lambda: auth.two_step_on())
 
 
@@ -150,8 +151,8 @@ def guard():
         token = session.get("csrf")
         if not token or not secrets.compare_digest(token, request.form.get("csrf", "")):
             abort(400)
-    if not setup_done():
-        return None if request.path == "/setup" else redirect(url_for("setup"))
+    if not setup_done():  # the setup page and its folder picker
+        return None if request.path in ("/setup", "/folders.json") else redirect(url_for("setup"))
     if request.path == "/setup":
         return redirect(url_for("index"))
     if session.get("ok") and session.get("sid") not in _live:  # logged out elsewhere, or the app restarted
@@ -1002,6 +1003,15 @@ def _drop_moved_secrets(before, s, f):
             s[secret] = ""
             dropped.append(label)
     return dropped
+
+
+@app.get("/folders.json")
+def folders_json():
+    """One level of the folder picker, for opening a folder deeper than the first two levels."""
+    kids = nas.children(request.args.get("path", ""))
+    if kids is None:
+        abort(404)
+    return jsonify(folders=kids)
 
 
 @app.route("/settings", methods=["GET", "POST"])

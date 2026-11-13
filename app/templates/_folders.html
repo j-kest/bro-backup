@@ -1,12 +1,88 @@
 {% if folders %}
-<div class="folders">
+{% set shown = folders|map(attribute='path')|list %}
+{% set deeper = [] %}{% for p in selected %}{% if p not in shown %}{% set _ = deeper.append(p) %}{% endif %}{% endfor %}
+<div class="folders" id="folder-tree" data-url="{{ url_for('folders_json') }}" data-nas="{{ nas_dir }}">
   {% for f in folders %}
-  <label class="check {{ 'd2' if f.depth == 2 }}{{ 'd3' if f.depth == 3 }}">
-    <input type="checkbox" name="src" value="{{ f.path }}" {{ 'checked' if f.path in selected }}>
-    {{ f.label }}
-  </label>
+  <div class="frow {{ 'd2' if f.depth == 2 }}{{ 'd3' if f.depth == 3 }}" data-path="{{ f.path }}">
+    {% if f.depth >= 2 and f.has_sub %}<button type="button" class="fopen" aria-expanded="false" aria-label="Open {{ f.label }}">▸</button>{% else %}<span class="fopen-gap"></span>{% endif %}
+    <label class="check"><input type="checkbox" name="src" value="{{ f.path }}" {{ 'checked' if f.path in selected }}> {{ f.label }}</label>
+  </div>
   {% endfor %}
 </div>
+{% if deeper %}
+<div class="folders-deeper" id="folders-deeper">
+  <p class="muted" style="margin:8px 0 4px">Also selected, deeper down:</p>
+  {% for p in deeper %}
+  <label class="check" data-deeper="{{ p }}"><input type="checkbox" name="src" value="{{ p }}" checked> <code>{{ p[nas_dir|length + 1:] if p.startswith(nas_dir ~ '/') else p }}</code></label>
+  {% endfor %}
+</div>
+{% endif %}
+<p class="muted" style="font-size:13px">Click ▸ to open a folder and tick folders deeper down. A ticked folder includes everything below it.</p>
+<script>
+(function () {
+  var tree = document.getElementById("folder-tree");
+  if (!tree) return;
+  function deeperBox(path) {
+    var el = document.querySelector('#folders-deeper [data-deeper="' + CSS.escape(path) + '"]');
+    return el;
+  }
+  function depthOf(row) { var m = /(?:^| )d(\d+)/.exec(row.className); return m ? parseInt(m[1], 10) : 1; }
+  function open(btn) {
+    var row = btn.closest(".frow");
+    if (btn.getAttribute("aria-expanded") === "true") {  // close: hide everything below this row
+      var d = depthOf(row), next = row.nextElementSibling;
+      while (next && depthOf(next) > d) { next.hidden = true; next = next.nextElementSibling; }
+      btn.setAttribute("aria-expanded", "false"); btn.textContent = "▸";
+      return Promise.resolve();
+    }
+    btn.setAttribute("aria-expanded", "true"); btn.textContent = "▾";
+    if (row.dataset.loaded) {
+      var d2 = depthOf(row), n = row.nextElementSibling;
+      while (n && depthOf(n) > d2) { if (depthOf(n) === d2 + 1) n.hidden = false; n = n.nextElementSibling; }
+      return Promise.resolve();
+    }
+    return fetch(tree.dataset.url + "?path=" + encodeURIComponent(row.dataset.path), {credentials: "same-origin"})
+      .then(function (r) { return r.ok ? r.json() : {folders: []}; })
+      .then(function (j) {
+        row.dataset.loaded = "1";
+        var d = depthOf(row) + 1, after = row;
+        j.folders.forEach(function (f) {
+          if (tree.querySelector('.frow[data-path="' + CSS.escape(f.path) + '"]')) return;  // a child dataset already shown
+          var div = document.createElement("div");
+          div.className = "frow d" + d; div.dataset.path = f.path;
+          var b;
+          if (f.has_sub) { b = document.createElement("button"); b.type = "button"; b.className = "fopen"; b.textContent = "▸";
+                           b.setAttribute("aria-expanded", "false"); b.setAttribute("aria-label", "Open " + f.label); }
+          else { b = document.createElement("span"); b.className = "fopen-gap"; }
+          var label = document.createElement("label"); label.className = "check";
+          var box = document.createElement("input"); box.type = "checkbox"; box.name = "src"; box.value = f.path;
+          var dup = deeperBox(f.path);
+          if (dup) { box.checked = dup.querySelector("input").checked; dup.remove(); }  // one box per folder
+          label.appendChild(box); label.appendChild(document.createTextNode(" " + f.label));
+          div.appendChild(b); div.appendChild(label);
+          after.insertAdjacentElement("afterend", div); after = div;
+        });
+        var rest = document.getElementById("folders-deeper");
+        if (rest && !rest.querySelector("[data-deeper]")) rest.remove();
+      });
+  }
+  tree.addEventListener("click", function (e) {
+    var btn = e.target.closest(".fopen");
+    if (btn) { e.preventDefault(); open(btn); }
+  });
+  // open the way to folders that were selected deeper down, so they show in their place
+  var wanted = Array.prototype.map.call(document.querySelectorAll("#folders-deeper [data-deeper]"), function (x) { return x.dataset.deeper; });
+  wanted.reduce(function (p, path) {
+    return p.then(function step() {
+      var rows = tree.querySelectorAll(".frow"), best = null;
+      rows.forEach(function (r) { if (path.indexOf(r.dataset.path + "/") === 0 && (!best || r.dataset.path.length > best.dataset.path.length)) best = r; });
+      var btn = best && best.querySelector(".fopen[aria-expanded='false']");
+      if (!btn || !deeperBox(path)) return null;
+      return open(btn).then(step);
+    });
+  }, Promise.resolve());
+})();
+</script>
 {% else %}
 <p class="err">No folders of your NAS are visible. Check the second line under volumes in the app settings.</p>
 {% endif %}
