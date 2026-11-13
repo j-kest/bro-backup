@@ -152,6 +152,10 @@ Under **Settings → Schedule**, "Bros may send to me at most" sets how fast eac
 
 **Restore** next to a bro lists every version. **Restore all** brings back a whole folder as it was then. **Browse** opens a version like a file manager: open folders, search by name (`invoice`, or a pattern like `*.pdf`), tick the files and folders you need and click **Restore selected**. Everything goes to the `restore` folder inside your bro-backup folder, so nothing on your NAS is ever overwritten.
 
+## Never sending what cannot fit
+
+Before a first backup, and after you add folders, BRO Backup measures the selected folders and does not start when they cannot fit in the space your bro gave you. Later backups are checked too once space gets short (less than 10 GiB free, or less than three times your biggest recent backup): restic then first works out, without sending anything, exactly how much the backup would add. When that does not fit, nothing is sent and the overview says why. With plenty of room this check is skipped, because it reads the changed files twice.
+
 ## Choosing folders
 
 Settings shows the first two levels of your NAS. Click ▸ next to a folder to open it and tick folders deeper down; a ticked folder includes everything below it. Folders you chose deeper down open by themselves when you come back to Settings.
@@ -407,6 +411,7 @@ Only someone with admin access to the NAS itself can do this.
 | "Stopped by ..." | Your bro no longer stores your backups | Remove him with × and pair with someone else |
 | A bro is "not reachable" after a new internet connection | His address changed while the relays were not reachable either | Wait for the next check-in (a few hours), or ask him to open BRO Backup: his NAS sends the new address within a minute of starting |
 | "Not started: your folders hold ..." | Before a first backup (or after you added folders) BRO Backup measures your folders, and they do not fit in the space your bro gave you | Ask him for more space with **ask for more**, choose fewer folders, or send the first backup on a disk |
+| "Not started: this backup would add ..." | Space at your bro is getting short, and restic's dry run shows that tonight's new data does not fit. Nothing was sent | Ask him for more space, leave large new files out, or keep fewer old versions |
 | "Quota at ... reached" | The space your bro gave you is used up | Ask your bro for more: he changes it next to your name under "Bros backing up to me". Or select fewer folders |
 | A folder is read "live" | No recent ZFS snapshot of its dataset, or the folder holds child datasets | Add a daily periodic snapshot task for that dataset in TrueNAS; for child datasets, tick those instead of the parent |
 | Restore test: "Data at your bro is damaged" | Disk or memory problems at your bro | Ask him to check his pool (scrub) and disks. Then **Restore → Run a full check**, and **Repair** if it finds damage |

@@ -358,14 +358,45 @@ def restic_backup(d, label, repo_path=None, deadline=None, force=False):
     return totals, ("\n".join(warnings) or None), sources_info
 
 
-def _run_restic_item(d, item, step, totals, s, host, repo_path, deadline, force):
-    """One restic run for one folder. Returns (exit code, stderr, why it was stopped: None|window|limit|pause, summary)."""
-    switch_at = None if repo_path else min((t for t in (next_limit_change(s), bro_limit_change(d)) if t), default=None)
-    args = [RESTIC, *limit_args(repo_path, d), "backup", "--json", "--host", host,
+def backup_args(d, item, s, host, repo_path=None, force=False, dry=False):
+    return [RESTIC, *limit_args(repo_path, d), "backup", "--json", *(["--dry-run"] if dry else []), "--host", host,
             "--tag", "bro", "--tag", f"src:{tag_enc(item['key'])}", "--tag", f"root:{tag_enc(item['root'])}",
             "--group-by", "host,tags", "--ignore-inode", "--exclude-caches",
             "--exclude-if-present", DATA_MARKER, "--exclude-if-present", SEED_MARKER, *exclude_args(s),
             *(["--force"] if force else []), "--", item["target"]]  # "--": a folder named "--x" is a path, never an option
+
+
+def estimate_added(d, plan=None, s=None):
+    """What a backup would add at the bro, from restic's dry run: it reads the changed files here and checks
+    them against the index, but writes and sends nothing. None when restic could not tell."""
+    s = s or settings()
+    plan = backup_plan() if plan is None else plan
+    host, total = slug(s["name"]), 0
+    for n, item in enumerate(plan, 1):
+        activity[d["id"]] = f"Checking what is new {n}/{len(plan)} ({item['key']})"
+        try:
+            p = subprocess.run(backup_args(d, item, s, host, dry=True), cwd=item["cwd"], env=restic_env(d),
+                               capture_output=True, text=True, timeout=6 * 3600)
+        except subprocess.TimeoutExpired:
+            return None
+        summ = None
+        for line in p.stdout.splitlines():
+            try:
+                msg = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(msg, dict) and msg.get("message_type") == "summary":
+                summ = msg
+        if not summ:
+            return None
+        total += int(summ.get("data_added_packed") or summ.get("data_added") or 0)
+    return total
+
+
+def _run_restic_item(d, item, step, totals, s, host, repo_path, deadline, force):
+    """One restic run for one folder. Returns (exit code, stderr, why it was stopped: None|window|limit|pause, summary)."""
+    switch_at = None if repo_path else min((t for t in (next_limit_change(s), bro_limit_change(d)) if t), default=None)
+    args = backup_args(d, item, s, host, repo_path, force)
     p = subprocess.Popen(args, cwd=item["cwd"], env=restic_env(d, repo_path), stdout=subprocess.PIPE,
                          stderr=subprocess.PIPE, text=True, bufsize=1)
     errs = []
@@ -479,6 +510,7 @@ def refresh_bro_limit(d):
 
 
 FIT_MARGIN = 1.2  # restic compresses and deduplicates: data may take a bit less than it does on the NAS
+ROOMY = 10 * GIB  # with more free space than this (and 3 times the biggest recent backup) there is no dry run
 
 
 def sources_key(s=None):
@@ -497,18 +529,36 @@ def sources_bytes(s=None):
 
 
 def check_fits(d, info):
-    """Before a first backup, or after folders were added: will it fit in the space the bro gave us at all?
-    Better to say so now than after days of uploading. Photos and videos hardly compress, so the size on the
-    NAS is a fair estimate; FIT_MARGIN leaves room for what restic saves on other files."""
+    """Will this backup fit in the space the bro gave us? Better to say so now than after uploading for hours
+    and hitting his quota halfway, which wastes the bandwidth and can block our login there.
+    - First backup, or folders added: the size of the folders (photos and videos hardly compress, so that is
+      a fair estimate; FIT_MARGIN leaves room for what restic saves on other files).
+    - Later backups, when space is getting short: restic's dry run says exactly what would be added.
+      With plenty of room that dry run is skipped, because it reads the changed files twice."""
     q = info.get("quota_gib") if isinstance(info, dict) else None  # None: the bro was not reachable, check later
-    if not q or (d.get("last_ok") and d.get("last_sources_key") == sources_key()):
+    if not q:
         return
     free = max(0, q * GIB - (info.get("usage") or 0))
-    need = sources_bytes()
-    if need > free * FIT_MARGIN:
-        raise JobError(f"Not started: your folders hold {human_bytes(need)}, and {d['name']} gave you {q} GiB "
-                       f"({human_bytes(free)} free). That cannot fit. Ask {d['name']} for more space (ask for more), "
-                       "choose fewer folders in Settings, or send the first backup on a disk.")
+    name = d["name"]
+    if not d.get("last_ok") or d.get("last_sources_key") != sources_key():
+        need = sources_bytes()
+        if need > free * FIT_MARGIN:
+            raise JobError(f"Not started: your folders hold {human_bytes(need)}, and {name} gave you {q} GiB "
+                           f"({human_bytes(free)} free). That cannot fit. Ask {name} for more space (ask for more), "
+                           "choose fewer folders in Settings, or send the first backup on a disk.")
+        return
+    biggest = max((int(h.get("added") or 0) for h in (d.get("history") or [])[-30:]), default=0)
+    if free > max(3 * biggest, ROOMY):
+        return
+    need = estimate_added(d)
+    if need is not None and need > free:
+        raise JobError(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "
+                       f"{human_bytes(free)} of the {q} GiB he gave you is free. Nothing was sent. Ask {name} for "
+                       "more space (ask for more), leave large new files out in Settings, or keep fewer old "
+                       "versions (Settings, Keep old versions).")
+    if need is not None:
+        log.info("Space at %s is getting short: this backup adds %s, %s is free", name, human_bytes(need),
+                 human_bytes(free))
 
 
 def check_quota(d):

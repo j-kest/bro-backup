@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 """A first backup that cannot fit in the space the bro gave is not started."""
+import os
+import shutil
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 
@@ -60,6 +63,55 @@ class Fits(unittest.TestCase):
     def test_no_quota_no_check(self):
         self.run_with(0, 0, 10 ** 15)
         self.assertEqual(self.calls, [1])
+
+    def later(self, usage, history_added, added):
+        self.run_with(100, 0, 1 * GIB)  # a first backup that fits
+        core.update_dest(self.d["id"], history=[{"added": history_added}])
+        with mock.patch.object(backup, "estimate_added", return_value=added) as est:
+            d = self.run_with(100, usage, 1 * GIB)
+        return d, est
+
+    def test_later_backup_with_room_is_not_dry_run(self):
+        d, est = self.later(10 * GIB, 1 * GIB, 0)
+        est.assert_not_called()
+        self.assertEqual(len(self.calls), 2)
+
+    def test_later_backup_that_does_not_fit_sends_nothing(self):
+        d, est = self.later(95 * GIB, 2 * GIB, 8 * GIB)
+        est.assert_called_once()
+        self.assertEqual(len(self.calls), 1)
+        self.assertIn("this backup would add 8.0 GiB at Bob, and only 5.0 GiB", d["last_error"])
+        self.assertIn("Nothing was sent", d["last_error"])
+
+    def test_later_backup_that_fits_runs(self):
+        d, est = self.later(95 * GIB, 2 * GIB, 3 * GIB)
+        est.assert_called_once()
+        self.assertEqual(len(self.calls), 2)
+        self.assertIsNone(d["last_error"])
+
+    def test_unknown_estimate_does_not_block(self):
+        d, est = self.later(95 * GIB, 2 * GIB, None)
+        self.assertEqual(len(self.calls), 2)
+
+
+@unittest.skipUnless(shutil.which(core.RESTIC), "needs the restic binary")
+class DryRun(unittest.TestCase):
+    def test_estimate_matches_what_restic_adds(self):
+        _env.reset()
+        d = mk_dest()
+        repo, src = tempfile.mkdtemp(), tempfile.mkdtemp()
+        env = dict(os.environ, RESTIC_REPOSITORY=repo, RESTIC_PASSWORD="pw-test-1", RESTIC_CACHE_DIR=tempfile.mkdtemp())
+        subprocess.run([core.RESTIC, "init"], env=env, capture_output=True, check=True)
+        with open(os.path.join(src, "a"), "wb") as f:
+            f.write(os.urandom(3_000_000))
+        item = {"key": "x", "root": src, "target": ".", "cwd": src}
+        with mock.patch.object(backup, "restic_env", return_value=env):
+            first = backup.estimate_added(d, [item], dict(core.settings(), name="Alice"))
+            subprocess.run(backup.backup_args(d, item, core.settings(), "alice"), cwd=src, env=env, capture_output=True, check=True)
+            again = backup.estimate_added(d, [item], dict(core.settings(), name="Alice"))
+        self.assertGreater(first, 2_900_000)
+        self.assertLess(again, 100_000)  # nothing new: only a little metadata
+        self.assertEqual(os.listdir(os.path.join(repo, "snapshots")).__len__(), 1)  # the dry runs wrote nothing
 
 
 if __name__ == "__main__":
