@@ -1,6 +1,6 @@
-# version : 1.0.1
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 10/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/core.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -24,7 +24,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.0.1"
+VERSION = "1.1.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -68,6 +68,7 @@ DEFAULT_SETTINGS = {"name": "", "pw_hash": "", "sources": [], "backup_hour": 2,
                     "ntfy_token": "", "append_only": False, "alert_hours": 72,
                     "default_quota_gib": 500, "use_zfs_snapshots": True, "snapshot_max_age_h": 26,
                     "restore_test": True, "backup_end_hour": -1, "totp_secret": "", "totp_last": -1, "sqlite_dbs": [], "limit_night_kib": -1, "night_start": 22, "night_end": 7,
+                    "recv_limit_kib": 0, "recv_limit_night_kib": -1, "keep_deleted_days": 7,
                     "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "",
                     "smtp_password": "", "mail_from": "", "mail_to": "",
                     "exclude_defaults": True, "excludes": [], "exclude_larger_gb": 0,

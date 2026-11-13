@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -130,9 +130,28 @@ def next_limit_change(s, t=None):
     return min(out)
 
 
-def limit_args(local):
-    lim = limit_kib()
-    return ["--limit-upload", str(lim)] if lim > 0 and not local else []
+def bro_limit(d):
+    """What the bro asked us to keep to (KiB/s, 0 = nothing), as he told us at the last status call."""
+    try:
+        return max(0, int((d or {}).get("remote_limit_kib") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def bro_limit_change(d):
+    """When the bro's limit changes (his day or night starts), as local time, or None."""
+    t = parse((d or {}).get("remote_limit_until"))
+    return t.astimezone() if t else None
+
+
+def limit_args(local, d=None):
+    """Our own upload limit and the limit of the bro: the lowest one counts. The bro's limit also holds for
+    what we fetch from him (a restore or a check), because that is his upload."""
+    if local:
+        return []
+    own, bro = limit_kib(), bro_limit(d)
+    up = min(x for x in (own, bro) if x > 0) if own > 0 or bro > 0 else 0
+    return (["--limit-upload", str(up)] if up else []) + (["--limit-download", str(bro)] if bro else [])
 
 
 def restore_source(d):
@@ -147,7 +166,7 @@ def restic(d, *args, timeout=None, repo_path=None, cwd=None, read=False):
     if read and not repo_path and restore_source(d):
         repo_path = restore_source(d)
         args = ("--no-lock",) + tuple(a for a in args if a != "--no-lock")
-    p = subprocess.run([RESTIC, *limit_args(repo_path), *args], env=restic_env(d, repo_path),
+    p = subprocess.run([RESTIC, *limit_args(repo_path, d), *args], env=restic_env(d, repo_path),
                        capture_output=True, text=True, timeout=timeout, cwd=cwd)
     p.stderr = scrub(d, p.stderr)
     return p
@@ -315,7 +334,10 @@ def restic_backup(d, label, repo_path=None, deadline=None, force=False):
                                                               force)
             if stop_reason != "limit":
                 break
-            log.info("Upload limit changes now (%s), restic continues with it", f"{limit_kib()} KiB/s" if limit_kib() else "no limit")
+            if not repo_path and bro_limit_change(d) and bro_limit_change(d) <= datetime.datetime.now().astimezone():
+                d = refresh_bro_limit(d)
+            up = (limit_args(repo_path, d) + ["", "no limit"])[1]
+            log.info("Upload limit changes now (%s), restic continues with it", f"{up} KiB/s" if up != "no limit" else up)
         if stop_reason == "window":
             raise WindowClosed(f"{item['key']} ({n} of {len(plan)})")
         if stop_reason == "pause":
@@ -337,8 +359,8 @@ def restic_backup(d, label, repo_path=None, deadline=None, force=False):
 
 def _run_restic_item(d, item, step, totals, s, host, repo_path, deadline, force):
     """One restic run for one folder. Returns (exit code, stderr, why it was stopped: None|window|limit|pause, summary)."""
-    switch_at = None if repo_path else next_limit_change(s)
-    args = [RESTIC, *limit_args(repo_path), "backup", "--json", "--host", host,
+    switch_at = None if repo_path else min((t for t in (next_limit_change(s), bro_limit_change(d)) if t), default=None)
+    args = [RESTIC, *limit_args(repo_path, d), "backup", "--json", "--host", host,
             "--tag", "bro", "--tag", f"src:{tag_enc(item['key'])}", "--tag", f"root:{tag_enc(item['root'])}",
             "--group-by", "host,tags", "--ignore-inode", "--exclude-caches",
             "--exclude-if-present", DATA_MARKER, "--exclude-if-present", SEED_MARKER, *exclude_args(s),
@@ -433,7 +455,26 @@ def bro_status(d, timeout=60):
             "disk": info.get("disk") if info.get("disk") in ("ok", "warn", "err") else None,
             "name": clean_name(info.get("name")) if isinstance(info.get("name"), str) else None,
             "blocked": info.get("blocked") is True, "escrow": info.get("escrow") is True,
+            "limit_kib": int_or_none(info.get("limit_kib"), 0, 10 ** 7) or 0,
+            "limit_for": int_or_none(info.get("limit_for"), 1, 2 * 86400),
             "v": version_or_none(info.get("v"))}
+
+
+def _limit_fields(info):
+    until = iso(now() + datetime.timedelta(seconds=info["limit_for"])) if info.get("limit_for") else None
+    return {"remote_limit_kib": info.get("limit_kib") or 0, "remote_limit_until": until}
+
+
+def refresh_bro_limit(d):
+    """The bro's day or night started during a backup: ask what he wants now. If he cannot be reached, keep the
+    limit we have and ask again in an hour."""
+    try:
+        fields = _limit_fields(bro_status(d, timeout=30))
+    except Exception as e:
+        log.info("Asking %s for his limit failed (%s), keeping the current one", d["name"], e)
+        fields = {"remote_limit_until": iso(now() + datetime.timedelta(hours=1))}
+    update_dest(d["id"], **fields)
+    return get_dest(d["id"]) or d
 
 
 def check_quota(d):
@@ -443,7 +484,8 @@ def check_quota(d):
         log.info("Quota check at %s failed (%s), backing up anyway", d["name"], e)
         return None
     disk = info["disk"]
-    update_dest(d["id"], remote_usage=info["usage"], remote_quota_gib=info["quota_gib"], remote_disk=disk)
+    update_dest(d["id"], remote_usage=info["usage"], remote_quota_gib=info["quota_gib"], remote_disk=disk,
+                **_limit_fields(info))
     if disk == "err" and d.get("remote_disk") != "err":
         notify(f"The NAS of {d['name']} is almost full",
                f"Your backups to {d['name']} may start failing because his disk is almost full. Let him know.",

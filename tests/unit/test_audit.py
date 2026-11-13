@@ -113,7 +113,8 @@ class F1PairAnswers(unittest.TestCase):
         with mock.patch.object(procs, "pair_call", return_value=evil):
             info = backup.bro_status(d)
         self.assertEqual(info, {"usage": 0, "snapshots": 0, "quota_gib": 0, "disk": None, "name": None,
-                                "blocked": False, "escrow": False, "v": None})
+                                "blocked": False, "escrow": False, "v": None,
+                                "limit_kib": 0, "limit_for": None})
 
 
 # ---------------------------------------------------------------- F5, F9: settings that move secrets or weaken retention

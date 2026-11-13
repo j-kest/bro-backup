@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/scheduler.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -11,7 +11,7 @@ import os
 import threading
 import time
 
-from . import alarm, backup, nas, pairing, peers, probro, procs, receiving, recovery, reports, space, updates, urbackup
+from . import alarm, backup, kept, nas, pairing, peers, probro, procs, receiving, recovery, reports, space, updates, urbackup
 from .core import (
     CODE_DAYS,
     PAUSED_MODES,
@@ -127,6 +127,7 @@ def scheduler():
                     threading.Thread(target=slow_tasks, daemon=True).start()
                 if time.time() - last_usage > 3600:
                     last_usage = time.time()
+                    kept.sweep_all()
                     refresh_receive_stats()
                     reports.check_silent_bros(s)
                     space.check()

@@ -23,6 +23,7 @@ def reset():
     for d in (core.RECEIVE_DIR, core.ESCROW_DIR):
         shutil.rmtree(d, ignore_errors=True)
         os.makedirs(d)
+    shutil.rmtree(os.path.join(core.DATA_DIR, "kept"), ignore_errors=True)
     core.my_tickets.clear()
 
 

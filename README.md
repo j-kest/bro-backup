@@ -5,7 +5,7 @@
 
 Encrypted off-site backups to a friend's NAS, and his to yours. No subscription, no account, no open ports. One app, one code to exchange.
 
-> **v1.0, the first public release.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
+> **v1.1.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
 
 ## How it works
 
@@ -44,13 +44,13 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.0.1.zip .
+python3 -m zipfile -e bro-backup-v1.1.0.zip .
 cd bro-backup
-sudo docker build -f app/Dockerfile -t bro-backup:1.0 .
-sudo python3 install/truenas-install.py --image bro-backup:1.0
+sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
+sudo python3 install/truenas-install.py --image bro-backup:1.1
 ```
 
-With `--image` pointing to a local image, the installer adds `pull_policy: never`, so TrueNAS uses your build instead of downloading. To move the image to another NAS: `sudo docker save bro-backup:1.0 | gzip > bro-backup-1.0.tar.gz`, then import it there (Synology: Container Manager → Image → Import) and use `image: bro-backup:1.0` with `pull_policy: never` in the compose file.
+With `--image` pointing to a local image, the installer adds `pull_policy: never`, so TrueNAS uses your build instead of downloading. To move the image to another NAS: `sudo docker save bro-backup:1.1 | gzip > bro-backup-1.1.tar.gz`, then import it there (Synology: Container Manager → Image → Import) and use `image: bro-backup:1.1` with `pull_policy: never` in the compose file.
 
 ### Synology DSM 7.2 or newer
 
@@ -63,7 +63,7 @@ With `--image` pointing to a local image, the installer adds `pull_policy: never
 ```yaml
 services:
   bro-backup:
-    image: ghcr.io/j-kest/bro-backup:1.0
+    image: ghcr.io/j-kest/bro-backup:1.1
     restart: unless-stopped
     init: true
     environment:
@@ -133,6 +133,16 @@ Exchange Online turns Basic authentication for SMTP off by default at the end of
 ## Seeing what comes in
 
 Next to each bro that backs up to you, the overview shows when a backup comes in: **Receiving now: 4.2 MiB/s, 1.3 GiB so far**. It refreshes every 5 seconds without reloading the page. Both signs are measured on your own NAS, so it works whatever version the bro runs: a restic lock in his repository refreshed in the last 10 minutes, and the bytes rest-server wrote for him (its Prometheus counters, readable only by an internal login of this app, never by a bro). The speed is the average over 30 seconds; restic sends in packs of a few MiB, so it moves in steps.
+
+## What a bro deletes is kept for a week
+
+A bro cleans up his own old versions, so he must be able to delete on your NAS. But whoever gets hold of his NAS (ransomware, a thief) could delete his whole backup the same way. So what a bro deletes stays on your NAS for 7 days (**Settings → Space for bros**, 0 to 90 days) in a folder his login cannot reach. The overview shows "deleted by him, kept until ..." next to his name, and **Put back** undoes it. When most of a backup disappears at once, you get a notification: ask your bro whether he meant it.
+
+It costs no extra space while the files exist (a kept file is a second name for the same data, a hard link), and the deleted data does not count toward his quota. It needs the whole bro-backup folder to be one file system; the self-check tells you when that is not so. After **Put back**, ask your bro to run a full check. This is the middle road between normal and **append-only**: with append-only nothing can ever be deleted and usage only grows.
+
+## A speed limit for your bros
+
+Under **Settings → Schedule**, "Bros may send to me at most" sets how fast each bro may send to you, with another value at night if you like (same night hours as your own limit). Your bro's NAS asks for it before every backup and keeps to the lowest of his own limit and yours; it also holds for what he fetches from you (a restore or a check), because that is your upload. His NAS applies it: a bro on a version before 1.1 does not follow it yet, and Settings tells you who.
 
 ## Pausing backups
 
@@ -301,7 +311,7 @@ Getting terabytes back over the internet takes days: your bro's upload speed is 
 2. **You** take the disk home. Only your **recovery code** is needed, no help code and no internet:
    - **On a new NAS**: connect the disk (mounted at `/seed`, or copy the folder into the `import` folder of bro-backup). In the wizard, open "My bro copied my backup to a disk for me", pick the disk and enter your recovery code. Your bros come back, paused, and **Restore** reads from the disk.
    - **On a NAS that still runs** (only the data was lost): connect the disk, open **Restore** next to your bro and click **Restore from the disk**.
-   - **On any PC with Docker Desktop**, without a NAS: `.\install\restore-from-disk.ps1 -Disk E:\`. It asks for your recovery code and puts the newest version of every folder in `BRO-restore` in your user folder. The disk is mounted read-only and the container gets no network. On Linux or macOS: `docker run --rm -it --network none -v /media/disk:/seed:ro -v ~/restored:/out ghcr.io/j-kest/bro-backup:1.0 python main.py restore-from-disk`.
+   - **On any PC with Docker Desktop**, without a NAS: `.\install\restore-from-disk.ps1 -Disk E:\`. It asks for your recovery code and puts the newest version of every folder in `BRO-restore` in your user folder. The disk is mounted read-only and the container gets no network. On Linux or macOS: `docker run --rm -it --network none -v /media/disk:/seed:ro -v ~/restored:/out ghcr.io/j-kest/bro-backup:1.1 python main.py restore-from-disk`.
 3. Afterwards, backups continue over the internet: only what changed since travels.
 
 The copy is made in a safe order (versions before data), so every version on the disk is complete, even if your NAS was still backing up while it was copied.
@@ -325,6 +335,7 @@ Binaries are pinned by version and SHA256 in the Dockerfile.
 - **Key copies at your bros**: AES-256-GCM with a key derived from your recovery code (scrypt, 160 bits of entropy). Fetching one requires a help code your bro creates.
 - **Web UI**: password (scrypt), optional two-step login with an authenticator app (TOTP), CSRF token, LAN only (port 8484). The session cookie only carries a random id: logins live inside the app, so logging out ends a login for real, changing the password or turning on two-step login logs out your other devices, and a restart of the app logs everybody out. After 5 wrong logins from one address it is blocked for 15 minutes and you get a notification. You are logged out after 60 minutes without activity and always after 12 hours. Security headers stop the page from being framed by other sites. The pairing API and rest-server only listen on 127.0.0.1 inside the container.
 - **Never backed up**: `/nas` is read-only. The self-check and an hourly check warn when a mount below `/nas` is writable after all (on TrueNAS a dataset that is mounted after the app started can arrive without the read-only flag); restart the app to fix it. Any folder containing a `.bro-backup-data` file (any BRO Backup data folder, also from another or older install) and any seed folder is excluded.
+- **Deleted by a bro**: kept for 7 days outside the reach of his login, so a stolen login cannot wipe a backup at once (see above). rest-server never changes a file in place, so a kept file cannot be damaged either.
 - **Quota**: checked on your side too, not only by the bro who sends. A bro more than 5% over the space you gave him loses his login until you give him more; rest-server also refuses to write beyond the sum of all quotas + 10%.
 - **What comes from a bro is checked**: names are plain text of at most 40 characters, addresses and logins must look exactly like what BRO Backup itself sends, and a new address must carry the same identity as at pairing. A seed disk may only hold a plain restic repository: links or unknown files refuse the import.
 - **Linking pairs made before v0.10**: which of your logins belongs to which bro is only accepted with proof. Your NAS asks the bro behind the address he gave to show, with an HMAC, that he holds the link key of that login. The proof is tied to his endpoint id, so another bro cannot pass it on.
@@ -366,6 +377,8 @@ Only someone with admin access to the NAS itself can do this.
 | Email via Microsoft 365 | off | The same notifications through the Microsoft Graph API, see "Email through Microsoft 365" |
 | Notify after | 72 hours | Hours without a successful backup before you get a notification |
 | Default space per bro | 500 GiB | Suggested when creating a code |
+| Keep what a bro deletes | 7 days | Deleted data of a bro stays this long and can be put back |
+| Bros may send to me at most | no limit | Speed limit each bro keeps to, by day and at night |
 | Append-only | off | Bros cannot delete anything here, not even old versions |
 | Read from ZFS snapshots | on, max 26 h old | Consistent backups, see above |
 | Monthly restore test | on | See above |
@@ -426,13 +439,15 @@ Suggestions for running it as a service:
 
 Once a day BRO Backup asks GitHub for the latest release. When there is a newer version, the overview shows it, with a link to what changed, and you get one notification. Only a plain request to the GitHub API goes out: nothing about your NAS, your bros or your backups. Turn it off under **Settings → Updates**. Updating itself is always up to you.
 
-The image tag in the compose file is the minor version (`1.0`), so fixes such as 1.0.1 arrive under the same tag:
+The image tag in the compose file is the minor version (`1.1`), so fixes such as 1.1.1 arrive under the same tag:
 
 - **TrueNAS**: TrueNAS checks the image itself and shows "Update available" in the row of the app. Select it and choose **Update**.
 - **Any Docker host**: `docker compose pull && docker compose up -d` in the folder of the compose file.
 - **Synology**: in Container Manager, download the image again under **Image**, then restart the project. (Not tried on a real Synology.)
 
-A new minor version (1.1) needs a new tag: edit the app and change `1.0` to `1.1`. Coming from a 0.10 version, change `0.10` to `1.0` once. Bros on different versions keep working together: 0.10.2 backs up to and from bros on 0.9.0, and pairs made on 0.9.0 get the new features once both sides have updated (see Tested). Update to 0.10.2 rather than 0.10.0 or 0.10.1: only 0.10.2 links pairs made on 0.9.
+A new minor version (1.2) needs a new tag: edit the app and change `1.1` to `1.2`. Coming from 0.10 or 1.0, change the tag to `1.1` once. Bros on different versions keep working together: 0.10.2 backs up to and from bros on 0.9.0, and pairs made on 0.9.0 get the new features once both sides have updated (see Tested). Update to 0.10.2 rather than 0.10.0 or 0.10.1: only 0.10.2 links pairs made on 0.9.
+
+The overview shows which version each bro runs, next to his name: in orange when it is older than yours. The self-check lists the bros that should update.
 
 After an update everyone has to log in again.
 
@@ -468,7 +483,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.0.1` (the update check reads the latest release; `1.0.1` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.0` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.1.0` (the update check reads the latest release; `1.1.0` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

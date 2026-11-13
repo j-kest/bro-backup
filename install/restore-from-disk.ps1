@@ -17,7 +17,7 @@
 param(
     [Parameter(Mandatory = $true)][string]$Disk,     # the disk, or the backup-of-... folder on it
     [string]$To = (Join-Path $HOME "BRO-restore"),   # where the files go
-    [string]$Image = "ghcr.io/j-kest/bro-backup:1.0",
+    [string]$Image = "ghcr.io/j-kest/bro-backup:1.1",
     [switch]$CodeFromInput,                          # read the recovery code from standard input (for scripts)
     [Parameter(ValueFromPipeline = $true)][string]$CodeInput  # filled by PowerShell when input is piped in
 )

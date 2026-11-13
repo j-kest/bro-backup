@@ -1,17 +1,19 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/receiving.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
 """Logins on our rest-server for the bros that back up here."""
 
+import datetime
 import os
 import secrets
 
 import bcrypt
 
-from .core import GIB, HTPASSWD, RECEIVE_DIR, human_bytes, iso, load_state, log, mutate, notify, now, sha256, slug, state_lock
+from .core import (GIB, HTPASSWD, RECEIVE_DIR, human_bytes, iso, load_state, log, mutate, notify, now, settings, sha256,
+                   slug, state_lock)
 
 
 # ---------------------------------------------------------------- htpasswd (receiving)
@@ -90,6 +92,23 @@ def new_receiver(name, quota_gib, invite=True, seed_back=False, mutual_ok=True):
     # An invite gets no rest-server login yet: /bro/accept makes one with a new password. So a code that
     # leaks before it is used cannot be used to store data here (and an unused code has no quota to skip).
     return user, pw, tok
+
+
+def limit_for_bros(s=None, t=None):
+    """What we ask every bro to keep to when he sends to us or fetches from us: (KiB/s, seconds until it changes).
+    0 = no limit, None = it does not change. A bro's NAS applies it itself (from 1.1 on): nothing here enforces it."""
+    s = s or settings()
+    t = t or datetime.datetime.now()
+    day, night = int(s.get("recv_limit_kib") or 0), int(s.get("recv_limit_night_kib", -1))
+    if night < 0 or night == day:
+        return day, None
+    a, b = int(s.get("night_start", 22)), int(s.get("night_end", 7))
+    is_night = a <= t.hour < b if a < b else (t.hour >= a or t.hour < b)
+    nxt = []
+    for h in (a, b):
+        c = t.replace(hour=h, minute=0, second=0, microsecond=0)
+        nxt.append(c if c > t else c + datetime.timedelta(days=1))
+    return (night if is_night else day), max(1, int((min(nxt) - t).total_seconds()))
 
 
 def drop_unaccepted_logins():

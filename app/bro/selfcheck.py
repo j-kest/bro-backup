@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/selfcheck.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -19,7 +19,7 @@ import zipfile
 
 from flask import Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import alarm, backup, dumps, lan, nas, peers, procs, recovery, safety, scheduler, space, updates, urbackup, web
+from . import alarm, backup, dumps, kept, lan, nas, peers, procs, recovery, safety, scheduler, space, updates, urbackup, web
 from .core import (
     CONFIG_DIR,
     backups_paused,
@@ -88,6 +88,28 @@ def _reach(host, port=443, timeout=6):
         return False, str(e) or e.__class__.__name__
 
 
+def versions_row(st):
+    """(area, name, status, text, fix) about the versions our bros run, or None without bros."""
+    bros = {}
+    for d in st["destinations"]:
+        if d.get("mode") != "revoked":
+            bros[d["name"]] = d.get("peer_version")
+    for r in st["receivers"].values():
+        if r.get("accepted"):
+            bros.setdefault(r.get("bro_name") or r["name"], r.get("peer_version"))
+    if not bros:
+        return None
+    mine = updates.parse_version(VERSION)
+    older = sorted(f"{n} ({v})" for n, v in bros.items() if updates.parse_version(v or "") and mine
+                   and updates.parse_version(v) < mine)
+    unknown = sorted(n for n, v in bros.items() if not updates.parse_version(v or ""))
+    if older:
+        return ("Your bros", "Versions", "warn", f"Older than yours ({VERSION}): " + ", ".join(older),
+                "Ask them to update. The speed test and the speed limit for bros need the same version on both sides.")
+    return ("Your bros", "Versions", "ok", f"All on {VERSION} or newer" + (
+        f"; not known yet for {', '.join(unknown)}" if unknown else ""), None)
+
+
 def selfcheck_checks():
     """Every check is {"area", "name", "status": ok|warn|err|info, "text", "fix"}."""
     out = []
@@ -120,6 +142,20 @@ def selfcheck_checks():
                 "Lower a quota on the Overview page or free up space.")
         else:
             add("This NAS", "Space for your bros", "ok", f"{total_quota} GiB promised, enough free space")
+    row = versions_row(st)
+    if row:
+        add(*row)
+    if st["receivers"]:
+        keep = kept.days(s)
+        if not keep:
+            add("This NAS", "Deleted backups of bros", "warn", "Not kept: what a bro deletes is gone right away",
+                "Set a number of days under Settings, Space for bros. It protects your bros when someone else gets hold of their NAS.")
+        elif kept.unsupported:
+            add("This NAS", "Deleted backups of bros", "err", f"Cannot be kept: {kept.unsupported[0]}",
+                "The whole bro-backup folder (/data) must be one file system, so a deleted file can keep a second name.")
+        else:
+            add("This NAS", "Deleted backups of bros", "ok", f"Kept for {keep} days" + (
+                f", {human_bytes(kept.total_bytes())} waiting now" if kept.total_bytes() else ""))
     opts = _mount_options(os.path.realpath(NAS_DIR))
     if not os.path.isdir(NAS_DIR):
         add("This NAS", "Your data (/nas)", "err", "Not mounted", "Mount your pool or volume at /nas, read-only.")

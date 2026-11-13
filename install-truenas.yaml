@@ -1,6 +1,6 @@
 services:
   bro-backup:
-    image: ghcr.io/j-kest/bro-backup:1.0
+    image: ghcr.io/j-kest/bro-backup:1.1
     restart: unless-stopped
     init: true
     environment:

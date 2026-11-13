@@ -1,6 +1,6 @@
-# version : 1.0.1
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 10/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/speed.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -156,9 +156,10 @@ def run_speedtest(dest_id):
         src = selected_size()
         s = settings()  # backups run at the backup hour: estimate with the limit that applies then
         at = datetime.datetime.now().replace(hour=int(s["backup_hour"]), minute=30)
-        lim = backup.limit_kib(s, at) * 1024 * 8
-        eff_up = min(up, lim) if lim else up
         d = get_dest(dest_id)
+        lims = [x for x in (backup.limit_kib(s, at), backup.bro_limit(d)) if x > 0]  # ours at that hour, his as it is now
+        lim = min(lims) * 1024 * 8 if lims else 0
+        eff_up = min(up, lim) if lim else up
         remote = d.get("remote_usage") or src
         path = seen.get("path") or (None, None)
         result = {"at": iso(now()), "up_bps": up, "down_bps": down, "eff_up_bps": eff_up,

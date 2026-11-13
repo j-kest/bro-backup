@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/peers.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -30,7 +30,7 @@ import secrets
 import shutil
 import threading
 
-from . import lan, procs, receiving
+from . import kept, lan, procs, receiving
 from .core import (
     version_or_none,
     clean_name,
@@ -442,6 +442,7 @@ def delete_data_now(user):
     path = receiver_dir(user)
     size = dir_size(path) if os.path.isdir(path) else 0
     shutil.rmtree(path, ignore_errors=True)
+    kept.forget(user)  # deleted on purpose by the owner of this NAS: nothing is kept
     with mutate() as st2:
         st2.setdefault("pending_deletes", {}).pop(user, None)
     log.info("Deleted the data of %s (%s)", user, human_bytes(size))

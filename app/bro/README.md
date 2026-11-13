@@ -16,6 +16,7 @@
 | `receiving.py` | Logins on our own rest-server for the bros that back up here |
 | `procs.py` | Background processes (rest-server, dumbpipe listeners and tunnels) and which network path a tunnel uses |
 | `backup.py` | restic: what to back up and from where (ZFS snapshots), exclusions, upload limits by time of day, the backup window, backups, seeds, restores |
+| `kept.py` | What a bro deletes is kept for a few days (hard links) and can be put back |
 | `dumps.py` | SQLite dumps before a backup, finding databases, checking Immich's own dumps |
 | `checks.py` | Restore test, full integrity check and repair |
 | `speed.py` | Speed test and time estimates |

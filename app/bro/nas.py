@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/nas.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -12,7 +12,7 @@ import re
 import shutil
 import stat
 
-from . import scheduler
+from . import kept, scheduler
 from .core import (
     clean_name,
     DATA_DIR,
@@ -265,7 +265,9 @@ def run_import(path, user, replace):
             raise RuntimeError("The copied folder is not a complete backup. Was the seed finished?")
         if os.path.exists(target):
             shutil.rmtree(target)
+            kept.forget(user)  # replaced on purpose (asked with the password)
         os.replace(tmp, target)
+        kept.sweep(user)
         scheduler.refresh_receive_stats(only=user)
         notify("Seed imported", f"{human_bytes(total)} for {user}. Their backups now continue over the internet.",
                priority="default")

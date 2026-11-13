@@ -96,6 +96,7 @@
         {% set p = (paths[d.id].type if paths.get(d.id) else None) or (d.speed.path if d.speed else None) %}
         <br>{% if p == 'direct' %}<span class="badge ok">direct</span>{% elif p == 'lan' %}<span class="badge ok">local network</span>{% elif p == 'relay' %}<span class="badge warn">via relay</span>{% else %}<span class="badge muted">connection unknown</span>{% endif %}
         {% if d.speed and d.speed.up_bps %}<span class="muted" style="font-size:12px">↑ {{ d.speed.up_bps|mbit }}</span>{% endif %}
+        {% if d.mode != 'revoked' %}{% set bv = bro_version(d.peer_version) %}<span class="badge {{ bv.cls }}" title="{{ bv.title }}">{{ bv.text }}</span>{% endif %}
         {% if d.id in pending %}<br><span class="warn">waiting for confirmation</span>{% endif %}</td>
       <td>
         {% if d.mode == 'revoked' %}<span class="err">Stopped by {{ d.name }}</span> · {{ d.revoked_at|ltime }}
@@ -241,6 +242,7 @@
     {% for r in receivers %}
     <tr data-search="{{ (r.name ~ ' ' ~ (r.ref or '') ~ ' ' ~ r.user)|lower }}">
       <td><strong>{{ r.name }}</strong>{% if r.ref %} <span class="muted">· {{ r.ref }}</span>{% endif %}
+        {% if r.accepted %}{% set bv = bro_version(r.version) %}<br><span class="badge {{ bv.cls }}" title="{{ bv.title }}">{{ bv.text }}</span>{% endif %}
         {% if r.request %}<br><span class="warn">asks for {{ r.request.gib }} GiB more ({{ r.request.at|ltime }}){% if r.request.note %}: "{{ r.request.note }}"{% endif %}</span>
           <form class="inline" method="post" action="{{ url_for('receiver_space_answer', user=r.user, answer='grant') }}">
             <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button style="padding:2px 8px">Grant</button></form>
@@ -255,6 +257,10 @@
       <td>{{ r.usage|bytes }} of {{ r.quota_gib }} GiB
         {% if r.blocked %}<br><span class="err">over quota: blocked since {{ r.blocked|ltime }}. Give more space to let him back in.</span>
         {% elif r.usage and r.usage >= r.quota_gib * 1073741824 %}<br><span class="err">quota reached</span>{% endif %}
+        {% if r.kept %}<br><span class="muted">deleted by him, kept until {{ r.kept.until }}: {{ r.kept.bytes|bytes }}</span>
+        <form class="inline" method="post" action="{{ url_for('receiver_put_back', user=r.user) }}"
+              data-confirm="Put back everything {{ r.name }} deleted in the last days? Only do this when he asks for it.">
+          <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="ghost" style="padding:2px 8px">Put back</button></form>{% endif %}
         <form method="post" action="{{ url_for('receiver_quota', user=r.user) }}" style="display:flex; gap:6px; margin-top:6px; max-width:200px">
           <input type="hidden" name="csrf" value="{{ csrf_token() }}">
           <input type="number" name="quota" min="1" value="{{ r.quota_gib }}" aria-label="Space in GiB" style="margin:0; padding:4px 6px">

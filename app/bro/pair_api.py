@@ -1,6 +1,6 @@
-# version : 1.0.0
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 08/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/pair_api.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -98,7 +98,9 @@ def bro_status_api():
     stats = receive_stats.get(user) or {}
     r = load_state()["receivers"][user]
     disk = (space.measure() or {}).get("level", "ok")  # only ok, warn or err: no sizes of our disk
+    lim, lim_for = receiving.limit_for_bros()
     return jsonify(usage=stats.get("usage", 0), disk=disk, snapshots=stats.get("snapshots", 0),
+                   limit_kib=lim, limit_for=lim_for,
                    quota_gib=r.get("quota_gib", 0), name=settings()["name"], blocked=bool(r.get("quota_blocked")),
                    escrow=os.path.exists(os.path.join(ESCROW_DIR, f"{user}.json")), v=VERSION)
 

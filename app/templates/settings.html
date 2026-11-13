@@ -78,6 +78,11 @@
         <input type="number" name="limit_mbit" min="0" value="{{ (s.limit_upload_kib * 8192 / 1000000)|round(1) if s.limit_upload_kib else 0 }}" step="0.1"></label>
       <label>At night (Mbit/s, empty = same, 0 = no limit)
         <input type="number" name="limit_night_mbit" min="0" step="0.1" value="{{ ((s.limit_night_kib * 8192 / 1000000)|round(1)) if s.limit_night_kib >= 0 else '' }}"></label>
+      <label>Bros may send to me at most (Mbit/s per bro, 0 = no limit)
+        <input type="number" name="recv_limit_mbit" min="0" step="0.1" value="{{ (s.recv_limit_kib * 8192 / 1000000)|round(1) if s.recv_limit_kib else 0 }}"></label>
+      <label>Bros at night (Mbit/s, empty = same, 0 = no limit)
+        <input type="number" name="recv_limit_night_mbit" min="0" step="0.1" value="{{ ((s.recv_limit_night_kib * 8192 / 1000000)|round(1)) if s.recv_limit_night_kib >= 0 else '' }}"></label>
+      {% if old_bros %}<p class="warn" style="grid-column:1/-1; margin:0">{{ old_bros|join(', ') }} run(s) a version before 1.1 and will not follow your limit for bros yet.</p>{% endif %}
       <label>Night is from … to
         <span style="display:flex; gap:6px">
           <select name="night_start">{% for h in range(24) %}<option value="{{ h }}" {{ 'selected' if h == s.night_start }}>{{ "%02d"|format(h) }}:00</option>{% endfor %}</select>
@@ -141,6 +146,11 @@
     <div class="grid">
       <label>Default space per bro (GiB)<input type="number" name="default_quota_gib" min="1" value="{{ s.default_quota_gib }}"></label>
     </div>
+    <label>Keep what a bro deletes for (days, 0 = delete right away)
+      <input type="number" name="keep_deleted_days" min="0" max="90" value="{{ s.keep_deleted_days }}" style="max-width:160px"></label>
+    <p class="muted">A bro cleans up his old versions himself. Whoever gets hold of his NAS could delete everything the same way,
+      so deleted data stays here this long and you can put it back from the overview. It takes space until then, outside his quota.
+      {% if kept_unsupported %}<span class="err">Not working now: {{ kept_unsupported }}. The bro-backup folder must be one file system.</span>{% endif %}</p>
     <label class="check"><input type="checkbox" name="append_only" value="1" {{ 'checked' if s.append_only }}>
       Append-only: bros cannot delete anything here (not even old versions, so their usage keeps growing)</label>
     <label class="check"><input type="checkbox" name="restore_test" value="1" {{ 'checked' if s.restore_test }}>

@@ -1,6 +1,6 @@
-# version : 1.0.1
+# version : 1.1.0
 # created by : JK and CF
-# last edited : 10/11/2026
+# last edited : 12/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -25,6 +25,7 @@ from . import (
     checks,
     dumps,
     incoming,
+    kept,
     lan,
     m365,
     nas,
@@ -123,7 +124,21 @@ def csrf_token():
     return session["csrf"]
 
 
-app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL,
+def bro_version(v):
+    """The version a bro runs, as a badge: older than ours (warn), the same, newer, or not known yet."""
+    mine, his = updates.parse_version(VERSION), updates.parse_version(v or "")
+    if not his:
+        return {"text": "version unknown", "cls": "muted", "title": "Known after the next check-in (within a few hours)"}
+    if mine and his < mine:
+        return {"text": f"v{v.lstrip('v')} · older", "cls": "warn",
+                "title": f"Your bro runs an older version than you ({VERSION}). Ask him to update: some features "
+                         "(the speed test, the speed limit for bros) only work when both sides are up to date."}
+    if mine and his > mine:
+        return {"text": f"v{v.lstrip('v')} · newer", "cls": "muted", "title": f"Your bro runs a newer version than you ({VERSION})"}
+    return {"text": f"v{v.lstrip('v')}", "cls": "muted", "title": "The same version as yours"}
+
+
+app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL, bro_version=bro_version,
                              two_step=lambda: auth.two_step_on())
 
 
@@ -388,7 +403,8 @@ def index():
                           "escrow": os.path.exists(os.path.join(ESCROW_DIR, f"{user}.json")),
                           "busy": recv_activity.get(user), "import_error": r.get("import_error"),
                           "blocked": r.get("quota_blocked"), "pickup": r.get("pickup"), "ref": r.get("ref"),
-                          "request": r.get("space_request")})
+                          "request": r.get("space_request"), "kept": kept.stats.get(user),
+                          "version": r.get("peer_version")})
     inc = incoming.status([r["user"] for r in receivers])
     for r in receivers:
         r["incoming"] = incoming_text(inc.get(r["user"]) or {"active": False})
@@ -541,6 +557,23 @@ def leftover_delete(user):
 def leftover_keep(user):
     peers.cancel_delete(user)
     flash("Kept. Nothing is deleted until you choose so.", "ok")
+    return redirect(url_for("index"))
+
+
+@app.post("/receiver/<user>/put-back")
+def receiver_put_back(user):
+    """Undo what a bro deleted in the last days (or what someone deleted with his login)."""
+    r = load_state()["receivers"].get(user)
+    if not r:
+        abort(404)
+    name = r.get("bro_name") or r["name"]
+    try:
+        files, size = kept.restore(user)
+        scheduler.refresh_receive_stats(only=user)
+        flash(f"Put back {files} file(s) ({human_bytes(size)}) in {name}'s backup. Ask {name} to run a full check "
+              "(Restore, Run a full check) before he cleans up again.", "ok")
+    except (ValueError, OSError) as e:
+        flash(f"Not put back: {e}", "err")
     return redirect(url_for("index"))
 
 
@@ -937,7 +970,7 @@ def dest_speed_run(dest_id):
 # old versions survive. A walk-up or a stolen session must not be able to redirect or silence them.
 SENSITIVE_SETTINGS = ("ntfy_url", "ntfy_token", "smtp_host", "smtp_port", "smtp_security", "smtp_user", "smtp_password",
                       "mail_method", "mail_to", "mail_from", "m365_tenant", "m365_client_id", "m365_sender",
-                      "m365_secret", "append_only", "retention", "ransomware_watch",
+                      "m365_secret", "append_only", "retention", "ransomware_watch", "keep_deleted_days",
                       # silencing: no alerts, no report, no restore test means nobody notices that backups stopped
                       "alert_hours", "report_day", "alert_receivers", "restore_test")
 ALERT_HOURS_MAX = 24 * 14
@@ -987,6 +1020,11 @@ def settings_page():
                 s["limit_upload_kib"] = round(max(0, float(f.get("limit_mbit", 0) or 0)) * 1e6 / 8 / 1024)  # restic wants KiB/s
                 night = f.get("limit_night_mbit", "").strip()
                 s["limit_night_kib"] = round(max(0, float(night)) * 1e6 / 8 / 1024) if night else -1
+                s["recv_limit_kib"] = round(max(0, float(f.get("recv_limit_mbit", 0) or 0)) * 1e6 / 8 / 1024)
+                rnight = f.get("recv_limit_night_mbit", "").strip()
+                s["recv_limit_night_kib"] = round(max(0, float(rnight)) * 1e6 / 8 / 1024) if rnight else -1
+                if "keep_deleted_days" in f:
+                    s["keep_deleted_days"] = min(kept.MAX_DAYS, max(0, int(f.get("keep_deleted_days") or 0)))
                 s["night_start"] = min(23, max(0, int(f.get("night_start", 22))))
                 s["night_end"] = min(23, max(0, int(f.get("night_end", 7))))
                 s["ntfy_url"] = f.get("ntfy_url", "").strip()
@@ -1064,11 +1102,25 @@ def settings_page():
     st = load_state()
     return render_template("settings.html", s=st["settings"], folders=nas.list_folders(), ub=urbackup.status(st),
                            lan_addrs=lan.configured(st["settings"]),
+                           kept_unsupported=(kept.unsupported or [None])[0], old_bros=_bros_without_limit(st),
                            excluded=nas.find_self_in_nas(), presets=RETENTION_PRESETS, plan=backup.backup_plan(),
                            rc=st["recovery"], dests=st["destinations"], default_excludes=DEFAULT_EXCLUDES,
                            weekdays=WEEKDAYS, db_scan=st.get("db_scan") or {}, dump_results=st.get("dump_results") or {},
                            db_choices=sorted(set(st["settings"].get("sqlite_dbs") or []) |
                                              {x["path"] for x in (st.get("db_scan") or {}).get("sqlite", [])}))
+
+
+def _bros_without_limit(st):
+    """Bros whose version does not follow the limit we ask for (before 1.1), when a limit is set."""
+    s = st["settings"]
+    if not (s.get("recv_limit_kib") or int(s.get("recv_limit_night_kib", -1)) > 0):
+        return []
+    out = []
+    for r in st["receivers"].values():
+        v = updates.parse_version(r.get("peer_version") or "")
+        if r.get("accepted") and (not v or v < (1, 1, 0)):
+            out.append(r.get("bro_name") or r["name"])
+    return out
 
 
 def process_overview():

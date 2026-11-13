@@ -23,7 +23,7 @@ import subprocess
 import sys
 import time
 
-IMAGE = os.environ.get("BRO_IMAGE", "ghcr.io/j-kest/bro-backup:1.0")
+IMAGE = os.environ.get("BRO_IMAGE", "ghcr.io/j-kest/bro-backup:1.1")
 APP_NAME = "bro-backup"
 DATASET_NAME = "bro-backup"
 MIDCLT = os.environ.get("BRO_MIDCLT", "midclt")
@@ -190,7 +190,7 @@ def main():
     global DRY
     ap = argparse.ArgumentParser(description="Install BRO Backup on TrueNAS SCALE")
     ap.add_argument("--dry-run", action="store_true", help="only show what would happen")
-    ap.add_argument("--image", help="use this image instead, e.g. a locally built bro-backup:1.0")
+    ap.add_argument("--image", help="use this image instead, e.g. a locally built bro-backup:1.1")
     opts = ap.parse_args()
     DRY = opts.dry_run
     global IMAGE

@@ -148,6 +148,14 @@ def main():
         if x.dest() and x.dest().get("last_error"):
             fail(f"{x.name}: {x.dest()['last_error'][:200]}")
 
+    # what a bro deletes is kept: on the real data folder every file of bob must get its second name at alice
+    out = subprocess.run(["docker", "compose", "exec", "-T", "alice", "python", "-c",
+                          "import sys, os; sys.path.insert(0, '/app')\nfrom bro import kept\nkept.sweep_all()\n"
+                          "n = sum(len(f) for u in kept.users() for _r, _d, f in os.walk(os.path.join(kept.KEPT_DIR, u, 'live')))\n"
+                          "print(n, kept.unsupported)"], cwd=LAB, capture_output=True, text=True).stdout.strip()
+    (ok if out.split(" ")[0].isdigit() and int(out.split(" ")[0]) > 3 and out.endswith("[]") else fail)(
+        f"alice keeps a second name for bob's files ({out})")
+
     step("2. Hello: both sides know how to reach each other")
     if wait(lambda: a.dest().get("link_key") and b.dest().get("link_key") and
             all(r.get("peer_pt") for r in a.state()["receivers"].values()), 120, "link keys and addresses exchanged"):

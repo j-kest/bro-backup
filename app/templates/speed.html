@@ -37,7 +37,7 @@
       <tr><td>Upload to {{ d.name }} <span class="muted">(your backups)</span></td><td><strong>{{ r.up_bps|mbit }}</strong></td></tr>
       <tr><td>Download from {{ d.name }} <span class="muted">(a restore)</span></td><td><strong>{{ r.down_bps|mbit }}</strong></td></tr>
     </table>
-    {% if r.limited %}<p class="muted">Your upload limit in Settings caps backups at {{ r.eff_up_bps|mbit }}. The estimates below use that.</p>{% endif %}
+    {% if r.limited %}<p class="muted">An upload limit (yours in Settings, or the one your bro asks for) caps backups at {{ r.eff_up_bps|mbit }}. The estimates below use that.</p>{% endif %}
   {% elif not d.speed_error %}
     <p class="muted">No test yet.</p>
   {% endif %}
