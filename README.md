@@ -44,7 +44,7 @@ You can run BRO Backup before the image is published. On TrueNAS, copy the relea
 
 ```sh
 cd /mnt/YOUR-POOL/YOUR-SHARE
-python3 -m zipfile -e bro-backup-v1.1.3.zip .
+python3 -m zipfile -e bro-backup-v1.1.4.zip .
 cd bro-backup
 sudo docker build -f app/Dockerfile -t bro-backup:1.1 .
 sudo python3 install/truenas-install.py --image bro-backup:1.1
@@ -461,7 +461,7 @@ The image tag in the compose file is the major version (`1`), so every 1.x relea
 
 Coming from an older tag (`0.10`, `1.0` or `1.1`), change it to `1` once. Bros on different versions keep working together: 0.10.2 backs up to and from bros on 0.9.0, and pairs made on 0.9.0 get the new features once both sides have updated (see Tested). Update to 0.10.2 rather than 0.10.0 or 0.10.1: only 0.10.2 links pairs made on 0.9.
 
-The overview shows which version each bro runs, next to his name: in orange when it is older than yours. The self-check lists the bros that should update.
+The overview shows which version each bro runs, next to his name: in orange when it is older than yours. It is refreshed within minutes after either of you updates, and before every backup. The self-check lists the bros that should update.
 
 After an update everyone has to log in again.
 
@@ -497,7 +497,7 @@ BRO Backup is free software under the **GNU Affero General Public License v3.0 o
 ## For maintainers
 
 1. Push to GitHub. If the repository is not `j-kest/bro-backup`, update it in `install-*.yaml`, `install/truenas-install.py`, `install/restore-from-disk.ps1`, `docs/index.html`, `UPDATE_REPO` in `app/bro/updates.py` and `SOURCE_URL` in `app/bro/core.py`.
-2. Publish a GitHub release with a new tag such as `v1.1.3` (the update check reads the latest release; `1.1.3` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
+2. Publish a GitHub release with a new tag such as `v1.1.4` (the update check reads the latest release; `1.1.4` without the v works too). The workflow runs the tests, then builds `ghcr.io/<org>/bro-backup:1.1` for amd64 and arm64.
 3. Make the package public (Packages → bro-backup → Package settings).
    The workflows pin every action by commit SHA (Dependabot proposes updates), and the Dockerfile pins restic, rest-server and dumbpipe by SHA256.
 4. Enable GitHub Pages from the `docs` folder for the setup page.

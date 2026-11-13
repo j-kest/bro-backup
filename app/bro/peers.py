@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.1.4
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 13/11/2026
 # Name : bro-backup (bro/peers.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -241,14 +241,14 @@ def hello(d):
             mark_revoked(d["id"])
             return True
         if _refused(e, 404):  # a bro on v0.9 or older: no hello yet, try again much later
-            update_dest(d["id"], hello_at=iso(now()), helloed=cur, last_contact=iso(now()))
+            update_dest(d["id"], hello_at=iso(now()), helloed=cur, hello_v=VERSION, last_contact=iso(now()))
             return True
         update_dest(d["id"], hello_fail_at=iso(now()))
         log.info("Hello to %s failed: %s", d["name"], e)
         return False
     if not isinstance(resp, dict):
         resp = {}
-    fields = {"hello_at": iso(now()), "helloed": cur, "last_contact": iso(now()), "hello_fail_at": None,
+    fields = {"hello_at": iso(now()), "helloed": cur, "hello_v": VERSION, "last_contact": iso(now()), "hello_fail_at": None,
               "peer_version": version_or_none(resp.get("v"))}
     if isinstance(resp.get("lk"), str) and KEY_RE.match(resp["lk"]):
         fields["link_key"] = resp["lk"]
@@ -359,8 +359,9 @@ def keep_in_touch():
     for d in st["destinations"]:
         if d.get("mode") == "revoked" or d.get("accepting") or not _due(d.get("hello_fail_at"), RETRY_SECONDS):
             continue
-        if d.get("helloed") != cur or _due(d.get("hello_at"), HELLO_SECONDS if d.get("peer_version")
-                                           else OLD_PEER_SECONDS):
+        # right after an update too: the bro then sees our new version within minutes, and we his
+        if d.get("helloed") != cur or d.get("hello_v") != VERSION or \
+                _due(d.get("hello_at"), HELLO_SECONDS if d.get("peer_version") else OLD_PEER_SECONDS):
             hello(d)
     for user, r in st["receivers"].items():
         if r.get("accepted") and r.get("peer_pt") and r.get("link_key") and r.get("pushed") != cur \

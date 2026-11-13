@@ -39,5 +39,30 @@ class Pages(WebBase):
         self.assertEqual(selfcheck.versions_row(core.load_state())[2], "ok")
 
 
+class Fresh(unittest.TestCase):
+    def setUp(self):
+        import _env as e
+        e.reset()
+
+    def test_hello_right_after_an_update(self):
+        from bro import peers
+        d = mk_dest("Bob")
+        core.my_tickets.update(data="endpointaaaa", pair="endpointbbbb")
+        cur = peers.current_tickets()
+        core.update_dest(d["id"], helloed=cur, hello_at=core.iso(core.now()), peer_version="1.1.1", hello_v="1.1.1")
+        with mock.patch.object(peers, "VERSION", "1.1.3"), mock.patch.object(peers, "hello") as h, \
+                mock.patch.object(peers, "push_address"):
+            peers.keep_in_touch()
+        h.assert_called_once()
+
+    def test_status_call_updates_the_version(self):
+        from bro import backup
+        d = mk_dest("Bob")
+        core.update_dest(d["id"], peer_version="1.1.1")
+        with mock.patch.object(backup.procs, "pair_call", return_value={"usage": 1, "quota_gib": 5, "v": "1.1.3"}):
+            backup.check_quota(core.get_dest(d["id"]))
+        self.assertEqual(core.get_dest(d["id"])["peer_version"], "1.1.3")
+
+
 if __name__ == "__main__":
     unittest.main()

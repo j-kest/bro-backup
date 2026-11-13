@@ -1,4 +1,4 @@
-# version : 1.1.3
+# version : 1.1.4
 # created by : JK and CF
 # last edited : 13/11/2026
 # Name : bro-backup (bro/backup.py)
@@ -569,7 +569,7 @@ def check_quota(d):
         return None
     disk = info["disk"]
     update_dest(d["id"], remote_usage=info["usage"], remote_quota_gib=info["quota_gib"], remote_disk=disk,
-                **_limit_fields(info))
+                **_limit_fields(info), **({"peer_version": info["v"]} if info.get("v") else {}))
     if disk == "err" and d.get("remote_disk") != "err":
         notify(f"The NAS of {d['name']} is almost full",
                f"Your backups to {d['name']} may start failing because his disk is almost full. Let him know.",
