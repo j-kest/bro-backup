@@ -1,6 +1,6 @@
-# version : 1.3.0
+# version : 1.3.1
 # created by : JK and CF
-# last edited : 13/11/2026
+# last edited : 14/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -538,25 +538,35 @@ def sources_bytes(s=None):
 def check_fits(d, info):
     """Will this backup fit in the space the bro gave us? Better to say so now than after uploading for hours
     and hitting his quota halfway, which wastes the bandwidth and can block our login there.
-    - First backup, or folders added: the size of the folders (photos and videos hardly compress, so that is
-      a fair estimate; FIT_MARGIN leaves room for what restic saves on other files).
+    - First backup, or other folders chosen: the size of the folders, minus what is already stored at the bro
+      (a first backup that was interrupted, a disk seed, or the same data under other folders: restic sends
+      nothing twice). Photos and videos hardly compress, so that is a fair estimate; FIT_MARGIN leaves room
+      for what restic saves on other files. Clearly too big: not started. Close: restic's dry run decides.
     - Later backups, when space is getting short: restic's dry run says exactly what would be added.
       With plenty of room that dry run is skipped, because it reads the changed files twice."""
     q = info.get("quota_gib") if isinstance(info, dict) else None  # None: the bro was not reachable, check later
     if not q:
         return
-    free = max(0, q * GIB - (info.get("usage") or 0))
+    stored = info.get("usage") or 0
+    free = max(0, q * GIB - stored)
     name = d["name"]
-    if not d.get("last_ok") or d.get("last_sources_key") != sources_key():
-        need = sources_bytes()
-        if need > free * FIT_MARGIN:
-            raise NoRoom(f"Not started: your folders hold {human_bytes(need)}, and {name} gave you {q} GiB "
+    first = not d.get("last_ok")
+    # None: the last backup was made by a version before 1.2.0, which did not record the folders. Not a change.
+    changed = d.get("last_sources_key") not in (None, sources_key())
+    if first or changed:
+        total = sources_bytes()
+        if total <= free * FIT_MARGIN:
+            return
+        if total - stored > free * FIT_MARGIN:
+            held = (f", {human_bytes(stored)} of it may already be at {name}" if stored >= GIB else "")  # a first backup that got somewhere
+            raise NoRoom(f"Not started: your folders hold {human_bytes(total)}{held}, and {name} gave you {q} GiB "
                            f"({human_bytes(free)} free). That cannot fit. Ask {name} for more space (ask for more), "
-                           "choose fewer folders in Settings, or send the first backup on a disk.")
-        return
-    biggest = max((int(h.get("added") or 0) for h in (d.get("history") or [])[-30:]), default=0)
-    if free > max(3 * biggest, ROOMY):
-        return
+                           "choose fewer folders in Settings"
+                           + (", or send the first backup on a disk." if first else "."))
+    else:
+        biggest = max((int(h.get("added") or 0) for h in (d.get("history") or [])[-30:]), default=0)
+        if free > max(3 * biggest, ROOMY):
+            return
     need = estimate_added(d)
     if need is not None and need > free:
         raise NoRoom(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "

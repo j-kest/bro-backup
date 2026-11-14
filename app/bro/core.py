@@ -1,6 +1,6 @@
-# version : 1.3.0
+# version : 1.3.1
 # created by : JK and CF
-# last edited : 13/11/2026
+# last edited : 14/11/2026
 # Name : bro-backup (bro/core.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -25,7 +25,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")

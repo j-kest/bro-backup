@@ -60,6 +60,40 @@ class Fits(unittest.TestCase):
         d = self.run_with(100, 80 * GIB, 500 * GIB)
         self.assertIn("Not started", d["last_error"])
 
+    def test_backup_from_before_1_2_is_not_a_first_backup(self):
+        # The screenshot case: backed up with 1.1.x (no folders recorded), 685.9 GiB of 1000 GiB used.
+        core.update_dest(self.d["id"], last_ok=core.iso(core.now()), history=[{"added": 2 * GIB}])
+        with mock.patch.object(backup, "estimate_added", return_value=1 * GIB) as est, \
+                mock.patch.object(backup, "sources_bytes", side_effect=AssertionError("measured as a first backup")):
+            d = self.run_with(1000, int(685.9 * GIB), int(763.7 * GIB))
+        est.assert_not_called()  # 314 GiB free: plenty of room
+        self.assertEqual(self.calls, [1])
+        self.assertIsNone(d["last_error"])
+
+    def test_interrupted_first_backup_counts_what_is_there(self):
+        with mock.patch.object(backup, "estimate_added", return_value=70 * GIB) as est:
+            d = self.run_with(1000, int(685.9 * GIB), int(763.7 * GIB))
+        est.assert_called_once()  # rough estimate fits, the dry run says exactly
+        self.assertEqual(self.calls, [1])
+        self.assertIsNone(d["last_error"])
+
+    def test_interrupted_first_backup_that_cannot_fit(self):
+        with mock.patch.object(backup, "estimate_added") as est:
+            d = self.run_with(500, 400 * GIB, 900 * GIB)
+        est.assert_not_called()
+        self.assertEqual(self.calls, [])
+        self.assertIn("400.0 GiB of it may already be at Bob", d["last_error"])
+
+    def test_other_folders_with_the_data_already_there(self):
+        self.run_with(1000, 0, 1 * GIB)
+        with core.mutate() as st:
+            st["settings"]["sources"] = ["/nas/data/photos", "/nas/data/docs"]
+        with mock.patch.object(backup, "estimate_added", return_value=0) as est:
+            d = self.run_with(1000, int(685.9 * GIB), int(763.7 * GIB))
+        est.assert_called_once()
+        self.assertEqual(len(self.calls), 2)
+        self.assertIsNone(d["last_error"])
+
     def test_no_quota_no_check(self):
         self.run_with(0, 0, 10 ** 15)
         self.assertEqual(self.calls, [1])
