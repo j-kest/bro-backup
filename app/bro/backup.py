@@ -1,6 +1,6 @@
-# version : 1.3.1
+# version : 1.4.1
 # created by : JK and CF
-# last edited : 14/11/2026
+# last edited : 19/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -525,14 +525,24 @@ def sources_key(s=None):
     return json.dumps(sorted((s or settings())["sources"]))
 
 
+SIZE_FRESH = 7 * 24 * 3600  # a measurement of the folders is used this long, also after an update or restart
+
+
 def sources_bytes(s=None):
-    """Total size of the selected folders, cached for 6 hours (walking a big pool takes a while)."""
+    """Total size of the selected folders. Walking a big pool reads a lot of metadata, so the result is kept in
+    the state for SIZE_FRESH: an update, a restart or an hourly retry does not measure again. The space check
+    only needs an estimate, and folders rarely change much in a week."""
+    s = s or settings()
     key = sources_key(s)
-    cached = sources_size.get(key)
-    if cached and time.time() - cached["at"] < 6 * 3600:
-        return cached["bytes"]
-    total = sum(tree_size(p) for p in (s or settings())["sources"] if os.path.isdir(p))
-    sources_size[key] = {"bytes": total, "at": time.time()}
+    for cached in (sources_size.get(key), load_state().get("sources_measured")):
+        if cached and cached.get("key", key) == key and time.time() - cached["at"] < SIZE_FRESH:
+            sources_size[key] = {"bytes": cached["bytes"], "at": cached["at"]}
+            return cached["bytes"]
+    total = sum(tree_size(p) for p in s["sources"] if os.path.isdir(p))
+    t = time.time()
+    sources_size[key] = {"bytes": total, "at": t}
+    with mutate() as st:
+        st["sources_measured"] = {"key": key, "bytes": total, "at": t}
     return total
 
 
@@ -555,8 +565,13 @@ def check_fits(d, info):
     # None: the last backup was made by a version before 1.2.0, which did not record the folders. Not a change.
     changed = d.get("last_sources_key") not in (None, sources_key())
     if first or changed:
+        passed = d.get("fit_ok") or {}
+        if passed.get("key") == sources_key() and q >= (passed.get("quota") or 0):
+            return  # checked when this first backup started: what it sends since then fills the room it found
+        activity[d["id"]] = "Measuring your folders (once a week at most)"
         total = sources_bytes()
         if total <= free * FIT_MARGIN:
+            update_dest(d["id"], fit_ok={"key": sources_key(), "quota": q})
             return
         if total - stored > free * FIT_MARGIN:
             held = (f", {human_bytes(stored)} of it may already be at {name}" if stored >= GIB else "")  # a first backup that got somewhere
@@ -569,6 +584,8 @@ def check_fits(d, info):
         if free > max(3 * biggest, ROOMY):
             return
     need = estimate_added(d)
+    if (first or changed) and (need is None or need <= free):
+        update_dest(d["id"], fit_ok={"key": sources_key(), "quota": q})
     if need is not None and need > free:
         raise NoRoom(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "
                        f"{human_bytes(free)} of the {q} GiB he gave you is free. Nothing was sent. Ask {name} for "
@@ -646,7 +663,7 @@ def run_backup(dest_id, scheduled=False):
 
         activity[dest_id] = "Checking space at your bro"
         info = check_quota(d)
-        activity[dest_id] = "Measuring your folders"
+        activity[dest_id] = "Checking that the backup fits"
         check_fits(get_dest(dest_id), info)
         activity[dest_id] = "Checking connection and repository"
         ensure_repo(d)
@@ -723,7 +740,7 @@ def run_backup(dest_id, scheduled=False):
 
         if d.get("fail_notified"):
             notify(f"BRO Backup to {d['name']} works again", "The last backup succeeded.", priority="default")
-        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(),
+        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(), fit_ok=None,
                     fail_notified=None, no_room=None,
                     last_added=summary.get("data_added"), last_files={k: summary.get(k) for k in
                                                                       ("files_new", "files_changed", "files_unmodified")},

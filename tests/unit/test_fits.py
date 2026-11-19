@@ -94,6 +94,48 @@ class Fits(unittest.TestCase):
         self.assertEqual(len(self.calls), 2)
         self.assertIsNone(d["last_error"])
 
+    def test_a_started_first_backup_is_not_measured_again(self):
+        # the first backup was interrupted (window, update): the next try trusts the check it passed
+        with mock.patch.object(backup, "restic_backup", side_effect=RuntimeError("interrupted")):
+            self.run_with(1000, 0, 700 * GIB)
+        self.assertEqual(core.get_dest(self.d["id"])["fit_ok"]["quota"], 1000)
+        with mock.patch.object(backup, "sources_bytes", side_effect=AssertionError("measured again")):
+            d = self.run_with_measured(1000, 300 * GIB)
+        self.assertEqual(self.calls, [1])
+        self.assertTrue(d["last_ok"])
+        self.assertIsNone(d.get("fit_ok"))
+
+    def run_with_measured(self, quota_gib, usage):
+        with mock.patch.object(backup.procs, "pair_call", return_value={"usage": usage, "quota_gib": quota_gib}):
+            backup.run_backup(self.d["id"])
+        return core.get_dest(self.d["id"])
+
+    def test_less_space_than_when_it_passed_checks_again(self):
+        with mock.patch.object(backup, "restic_backup", side_effect=RuntimeError("interrupted")):
+            self.run_with(1000, 0, 700 * GIB)
+        d = self.run_with(500, 100 * GIB, 700 * GIB)
+        self.assertIn("Not started", d["last_error"])
+
+    def test_measurement_survives_a_restart(self):
+        src = tempfile.mkdtemp()
+        with open(os.path.join(src, "f"), "wb") as f:
+            f.write(b"x" * 1234)
+        with core.mutate() as st:
+            st["settings"]["sources"] = [src]
+        self.assertEqual(backup.sources_bytes(), 1234)
+        core.sources_size.clear()  # the app restarted
+        with mock.patch.object(backup, "tree_size", side_effect=AssertionError("walked again")):
+            self.assertEqual(backup.sources_bytes(), 1234)
+        with core.mutate() as st:
+            st["sources_measured"]["at"] -= backup.SIZE_FRESH + 1
+        core.sources_size.clear()
+        self.assertEqual(backup.sources_bytes(), 1234)  # older than a week: measured again
+        with core.mutate() as st:
+            st["settings"]["sources"] = [src, tempfile.mkdtemp()]
+        with mock.patch.object(backup, "tree_size", return_value=5) as walk:
+            self.assertEqual(backup.sources_bytes(), 10)  # other folders: measured again
+        self.assertEqual(walk.call_count, 2)
+
     def test_no_quota_no_check(self):
         self.run_with(0, 0, 10 ** 15)
         self.assertEqual(self.calls, [1])
