@@ -29,6 +29,9 @@ Pull requests without a sign-off are not merged.
 - GitHub Actions runs both on every push and pull request (`.github/workflows/test.yml`). A pull request
   is only merged when they pass. New behaviour comes with a unit test.
 - Describe what you tested, and on which NAS (TrueNAS version, Synology DSM version).
+- Commit messages say what the commit does, in English. A commit that raises `VERSION` in
+  `app/bro/core.py` starts with the new version: `1.4.1: Measure the folders once a week`. Other commits
+  have no number: `Unit tests on Python 3.15`.
 - New files start with:
   ```
   # SPDX-License-Identifier: AGPL-3.0-or-later
