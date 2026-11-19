@@ -1,11 +1,12 @@
 {% if folders %}
 {% set shown = folders|map(attribute='path')|list %}
 {% set deeper = [] %}{% for p in selected %}{% if p not in shown %}{% set _ = deeper.append(p) %}{% endif %}{% endfor %}
-<div class="folders" id="folder-tree" data-url="{{ url_for('folders_json') }}" data-nas="{{ nas_dir }}">
+<div class="folders" id="folder-tree" data-url="{{ url_for('folders_json') }}" data-sizes="{{ url_for('folder_sizes_json') }}" data-nas="{{ nas_dir }}">
   {% for f in folders %}
   <div class="frow {{ 'd2' if f.depth == 2 }}{{ 'd3' if f.depth == 3 }}" data-path="{{ f.path }}">
     {% if f.depth >= 2 and f.has_sub %}<button type="button" class="fopen" aria-expanded="false" aria-label="Open {{ f.label }}">▸</button>{% else %}<span class="fopen-gap"></span>{% endif %}
     <label class="check"><input type="checkbox" name="src" value="{{ f.path }}" {{ 'checked' if f.path in selected }}> {{ f.label }}</label>
+    <span class="fsize muted"></span>
   </div>
   {% endfor %}
 </div>
@@ -13,11 +14,12 @@
 <div class="folders-deeper" id="folders-deeper">
   <p class="muted" style="margin:8px 0 4px">Also selected, deeper down:</p>
   {% for p in deeper %}
-  <label class="check" data-deeper="{{ p }}"><input type="checkbox" name="src" value="{{ p }}" checked> <code>{{ p[nas_dir|length + 1:] if p.startswith(nas_dir ~ '/') else p }}</code></label>
+  <label class="check" data-deeper="{{ p }}"><input type="checkbox" name="src" value="{{ p }}" checked> <code>{{ p[nas_dir|length + 1:] if p.startswith(nas_dir ~ '/') else p }}</code> <span class="fsize muted"></span></label>
   {% endfor %}
 </div>
 {% endif %}
-<p class="muted" style="font-size:13px">Click ▸ to open a folder and tick folders deeper down. A ticked folder includes everything below it.</p>
+<p class="folders-total" id="folders-total" hidden></p>
+<p class="muted" style="font-size:13px">Click ▸ to open a folder and tick folders deeper down. A ticked folder includes everything below it. The sizes are what each folder holds now, before compression.</p>
 <script nonce="{{ csp_nonce() }}">
 (function () {
   var tree = document.getElementById("folder-tree");
@@ -59,13 +61,54 @@
           var dup = deeperBox(f.path);
           if (dup) { box.checked = dup.querySelector("input").checked; dup.remove(); }  // one box per folder
           label.appendChild(box); label.appendChild(document.createTextNode(" " + f.label));
-          div.appendChild(b); div.appendChild(label);
+          var sz = document.createElement("span"); sz.className = "fsize muted";
+          div.appendChild(b); div.appendChild(label); div.appendChild(sz);
           after.insertAdjacentElement("afterend", div); after = div;
         });
         var rest = document.getElementById("folders-deeper");
         if (rest && !rest.querySelector("[data-deeper]")) rest.remove();
+        askSizes();
       });
   }
+  // sizes: measured on the NAS in the background, asked again until every folder on screen has one
+  var sizes = {}, timer = null, total = document.getElementById("folders-total");
+  function fmt(n) {
+    var u = ["B", "KiB", "MiB", "GiB", "TiB"], i = 0;
+    while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+    return i ? n.toFixed(1) + " " + u[i] : Math.round(n) + " B";
+  }
+  function boxes() { return document.querySelectorAll('input[name="src"]'); }
+  function show() {
+    document.querySelectorAll(".fsize").forEach(function (el) {
+      var box = el.parentElement.querySelector('input[name="src"]');
+      var n = box ? sizes[box.value] : null;
+      el.textContent = n === undefined ? "…" : (n === null ? "" : fmt(n));
+    });
+    var picked = Array.prototype.filter.call(boxes(), function (b) { return b.checked; }).map(function (b) { return b.value; });
+    var top = picked.filter(function (p) { return !picked.some(function (q) { return q !== p && p.indexOf(q + "/") === 0; }); });
+    if (!top.length) { total.hidden = true; return; }
+    var sum = 0, missing = 0;
+    top.forEach(function (p) { if (sizes[p] === undefined) missing++; else sum += sizes[p] || 0; });
+    total.hidden = false;
+    total.textContent = "Selected: " + (missing ? "at least " : "about ") + fmt(sum) + (missing ? " (still counting)" : "");
+  }
+  function askSizes() {
+    var want = Array.prototype.map.call(boxes(), function (b) { return b.value; })
+      .filter(function (p) { return !(p in sizes); });
+    show();
+    if (!want.length) return;
+    var q = want.slice(0, 200).map(function (p) { return "p=" + encodeURIComponent(p); }).join("&");
+    fetch(tree.dataset.sizes + "?" + q, {credentials: "same-origin"})
+      .then(function (r) { return r.ok ? r.json() : {sizes: {}, waiting: false}; })
+      .then(function (j) {
+        Object.keys(j.sizes).forEach(function (k) { sizes[k] = j.sizes[k]; });
+        show();
+        clearTimeout(timer);
+        if (j.waiting || want.length > 200) timer = setTimeout(askSizes, 3000);
+      }).catch(function () { clearTimeout(timer); timer = setTimeout(askSizes, 10000); });
+  }
+  document.addEventListener("change", function (e) { if (e.target.name === "src") show(); });
+  askSizes();
   tree.addEventListener("click", function (e) {
     var btn = e.target.closest(".fopen");
     if (btn) { e.preventDefault(); open(btn); }

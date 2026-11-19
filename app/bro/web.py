@@ -161,7 +161,7 @@ def guard():
         if not token or not secrets.compare_digest(token, request.form.get("csrf", "")):
             abort(400)
     if not setup_done():  # the setup page and its folder picker
-        if request.path not in ("/setup", "/folders.json"):
+        if request.path not in ("/setup", "/folders.json", "/folder-sizes.json"):
             return redirect(url_for("setup"))
         return None if _setup_allowed() else (render_template("setup_locked.html"), 403)
     if request.path == "/setup":
@@ -1036,6 +1036,13 @@ def folders_json():
     if kids is None:
         abort(404)
     return jsonify(folders=kids)
+
+
+@app.get("/folder-sizes.json")
+def folder_sizes_json():
+    """Sizes for the folder picker. Folders not measured yet are measured in the background: ask again."""
+    known, waiting = nas.folder_sizes(request.args.getlist("p")[:200])
+    return jsonify(sizes=known, waiting=waiting)
 
 
 @app.route("/settings", methods=["GET", "POST"])

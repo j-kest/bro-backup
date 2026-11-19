@@ -219,6 +219,9 @@ diagnostics bundle (Logs page) of both bros and send it along.
 - [ ] **60. A lock left behind.** On a fresh lab with `-SizeMB 80`: `python3 ../tests/lab/stale_lock.py`.
   Expected: "All checks passed": bob's restic is killed during a backup, its lock stays at alice, and the
   next backup removes it and runs the weekly cleanup.
+- [ ] **61. Folder sizes in the picker.** Settings: every folder shows "…" and then its size within a few
+  seconds; open a folder with ▸ and the folders below get theirs too. Tick a folder and one inside it:
+  "Selected" under the list counts the data once. On a NAS with a big pool the first sizes take longer.
 
 ### Help
 

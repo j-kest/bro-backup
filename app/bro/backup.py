@@ -40,6 +40,7 @@ from .core import (
     conn_paths,
     dest_ports,
     dir_size,
+    tree_size,
     sources_size,
     get_dest,
     human_bytes,
@@ -530,7 +531,7 @@ def sources_bytes(s=None):
     cached = sources_size.get(key)
     if cached and time.time() - cached["at"] < 6 * 3600:
         return cached["bytes"]
-    total = sum(dir_size(p) for p in (s or settings())["sources"] if os.path.isdir(p))
+    total = sum(tree_size(p) for p in (s or settings())["sources"] if os.path.isdir(p))
     sources_size[key] = {"bytes": total, "at": time.time()}
     return total
 

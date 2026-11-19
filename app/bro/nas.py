@@ -1,6 +1,6 @@
-# version : 1.1.2
+# version : 1.4.0
 # created by : JK and CF
-# last edited : 13/11/2026
+# last edited : 19/11/2026
 # Name : bro-backup (bro/nas.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -11,6 +11,8 @@ import os
 import re
 import shutil
 import stat
+import threading
+import time
 
 from . import kept, scheduler
 from .core import (
@@ -26,10 +28,12 @@ from .core import (
     human_bytes,
     iso,
     load_state,
+    log,
     mutate,
     notify,
     now,
     recv_activity,
+    tree_size,
 )
 
 
@@ -137,6 +141,74 @@ def children(path):
     for e in _visible_subdirs(path)[:MAX_CHILDREN]:
         out.append({"path": e.path, "label": e.name, "has_sub": bool(_visible_subdirs(e.path)[:1])})
     return out
+
+
+# ---------------------------------------------------------------- folder sizes for the picker
+SIZE_TTL = 6 * 3600   # a size is shown for this long before it is measured again
+SIZE_DEPTH = 3        # one walk also gives the size of the folders this many levels below
+_sizes = {}           # real path -> (bytes, measured at)
+_todo = []            # real paths waiting to be measured, in the order they were asked for
+_size_lock = threading.Lock()
+_size_worker = []     # while a worker runs: [True, the folder it is measuring]
+
+
+def _fresh(real):
+    hit = _sizes.get(real)
+    return hit if hit and time.time() - hit[1] < SIZE_TTL else None
+
+
+def folder_sizes(paths):
+    """The sizes known for these folders, as {path: bytes, or None for a path that is not a folder here}, and
+    whether some are still being measured. Unknown folders are measured one by one in the background: a big
+    pool takes a while to walk, and one walk at a time keeps the NAS responsive."""
+    known, waiting = {}, False
+    with _size_lock:
+        for p in paths:
+            real = inside_nas(p)
+            if not real:
+                known[p] = None  # not a folder of the NAS (any more): nothing to measure
+                continue
+            hit = _fresh(real)
+            if hit:
+                known[p] = hit[0]
+                continue
+            waiting = True
+            if real not in _todo and real not in _size_worker:
+                _todo.append(real)
+        start = _todo and not _size_worker
+        if start:
+            _size_worker[:] = [True]
+    if start:
+        threading.Thread(target=_measure_all, daemon=True).start()
+    return known, waiting
+
+
+def _measure_all():
+    try:
+        while True:
+            with _size_lock:
+                if not _todo:
+                    return
+                real = _todo.pop(0)
+                if _fresh(real):  # measured along with a folder above it
+                    continue
+                _size_worker[1:] = [real]
+            found = {}
+            try:
+                tree_size(real, found, SIZE_DEPTH)
+            except Exception as e:  # never leave the picker waiting forever
+                log.info("Could not measure %s: %s", real, e)
+                found = {real: 0}
+            t = time.time()
+            with _size_lock:
+                for k, v in found.items():
+                    _sizes[k] = (v, t)
+                if len(_sizes) > 20000:  # a huge tree: keep the most recent
+                    for k in sorted(_sizes, key=lambda k: _sizes[k][1])[:len(_sizes) - 20000]:
+                        _sizes.pop(k)
+    finally:
+        with _size_lock:
+            _size_worker.clear()  # the next ask starts a new worker
 
 
 def list_folders():

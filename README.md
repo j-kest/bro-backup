@@ -5,7 +5,7 @@
 
 Encrypted off-site backups to a friend's NAS, and his to yours. No subscription, no account, no open ports. One app, one code to exchange.
 
-> **v1.3.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
+> **v1.4.** Tested in a lab with the real restic, rest-server and dumbpipe, and on a TrueNAS and a Synology. Keep another backup next to BRO Backup until it has proven itself on your NAS.
 
 ## How it works
 
@@ -161,7 +161,7 @@ Before a first backup, and after you add folders, BRO Backup measures the select
 
 ## Choosing folders
 
-Settings shows the first two levels of your NAS. Click ▸ next to a folder to open it and tick folders deeper down; a ticked folder includes everything below it. Folders you chose deeper down open by themselves when you come back to Settings.
+Settings shows the first two levels of your NAS. Click ▸ next to a folder to open it and tick folders deeper down; a ticked folder includes everything below it. Folders you chose deeper down open by themselves when you come back to Settings. Next to every folder is how much it holds, and under the list the total of what you ticked: the NAS measures it in the background, so on a big pool the first sizes take a while. Folders a backup skips, such as the bro-backup data folder, are not counted.
 
 ## Leaving things out
 

@@ -1,6 +1,6 @@
-# version : 1.3.1
+# version : 1.4.0
 # created by : JK and CF
-# last edited : 14/11/2026
+# last edited : 19/11/2026
 # Name : bro-backup (bro/core.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -25,7 +25,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.3.1"
+VERSION = "1.4.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -276,6 +276,38 @@ def dir_size(path):
             except OSError:
                 pass
     return total
+
+
+def tree_size(root, record=None, depth=0):
+    """What a backup of root would read: the size of its files, without folders a backup skips (our own data
+    folder, a seed, anything holding DATA_MARKER) and without ZFS's .zfs snapshot folder. With `record`, also
+    fills record[folder] with the size of every folder up to `depth` levels below root (one walk for a whole tree)."""
+    root = os.path.normpath(root)
+    base = root.count(os.sep)
+    sizes = {}
+    for cur, dirs, files in os.walk(root):
+        if DATA_MARKER in files or SEED_MARKER in files:
+            dirs[:] = []
+            continue
+        dirs[:] = [d for d in dirs if d != ".zfs"]
+        level = cur.count(os.sep) - base
+        bucket = cur if level <= depth else os.sep.join(cur.split(os.sep)[:base + depth + 1])
+        n = 0
+        for fn in files:
+            try:
+                n += os.lstat(os.path.join(cur, fn)).st_size
+            except OSError:
+                pass
+        sizes[bucket] = sizes.get(bucket, 0) + n
+        if level < depth:  # folders skipped below still show, as 0
+            for d in dirs:
+                sizes.setdefault(os.path.join(cur, d), 0)
+    for folder in sorted(sizes, key=lambda p: -p.count(os.sep)):  # add every folder to its parent
+        if folder != root:
+            sizes[os.path.dirname(folder)] += sizes[folder]
+    if record is not None:
+        record.update(sizes)
+    return sizes.get(root, 0)
 
 
 def b64e(b):
