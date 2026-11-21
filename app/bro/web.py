@@ -1,6 +1,6 @@
-# version : 1.3.0
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 13/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -46,6 +46,7 @@ from . import (
     urbackup,
 )
 from .core import (
+    dest_sources,
     tag_dec,
     clean_name,
     CODE_DAYS,
@@ -772,6 +773,38 @@ def dest_online(dest_id):
     update_dest(dest_id, mode=None, last_run=None, restore_from=None)  # later restores go over the internet again
     flash("Backups resumed." if was == "hold" else "Seed cancelled. The backup now goes over the internet.", "ok")
     return redirect(url_for("index"))
+
+
+@app.route("/dest/<dest_id>/folders", methods=["GET", "POST"])
+def dest_folders(dest_id):
+    """Which folders go to this bro: the folders in Settings, or a choice of his own."""
+    d = get_dest(dest_id)
+    if not d or d.get("mode") == "revoked":
+        abort(404)
+    if request.method == "POST":
+        same = request.form.get("which") != "own"
+        chosen = None if same else nas.clean_sources(request.form.getlist("src"))
+        if not same and not chosen:
+            flash("Choose at least one folder, or send him the same folders as in Settings.", "err")
+            return redirect(url_for("dest_folders", dest_id=dest_id))
+        s = settings()
+        before = dest_sources(d, s)
+        after = dest_sources({"sources": chosen}, s)
+        gone = [p for p in before if os.path.isdir(p) and p not in after]
+        if gone and not _reauth_ok():  # no alarm notices a folder that is not sent any more
+            return _reauth_failed(url_for("dest_folders", dest_id=dest_id))
+        update_dest(dest_id, sources=chosen)
+        if gone:
+            log.info("Folders left out for %s: %s", d["name"], ", ".join(gone))
+            notify(f"Fewer folders go to {d['name']}", f"Left out from {request.remote_addr}: " +
+                   ", ".join(os.path.relpath(p, NAS_DIR) for p in gone), priority="default")
+        flash(f"{d['name']} gets " + ("the same folders as in Settings." if same else
+                                       f"{len(chosen)} folder(s) of his own choice.") +
+              " The next backup to him uses them.", "ok")
+        return redirect(url_for("index"))
+    s = settings()
+    return render_template("dest_folders.html", d=d, folders=nas.list_folders(), same=d.get("sources") is None,
+                           selected=dest_sources(d, s), global_sources=s["sources"], plan=backup.backup_plan(d))
 
 
 @app.route("/dest/<dest_id>/remove", methods=["GET", "POST"])

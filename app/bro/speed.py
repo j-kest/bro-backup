@@ -1,6 +1,6 @@
-# version : 1.1.3
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 13/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/speed.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -104,9 +104,9 @@ def speed_download(port, d, seconds):
     return (total - first_len) * 8 / (last - first)
 
 
-def selected_size():
-    """Total size of the selected folders, cached for 6 hours (walking a big pool takes a while)."""
-    return backup.sources_bytes()
+def selected_size(d=None):
+    """Total size of the folders this bro gets, kept for a week (walking a big pool takes a while)."""
+    return backup.sources_bytes(d=d)
 
 
 def run_speedtest(dest_id):
@@ -144,7 +144,7 @@ def run_speedtest(dest_id):
             activity[dest_id] = f"Speed test: download ({SPEED_SECONDS} s)"
             down = speed_download(port, d, SPEED_SECONDS)
         activity[dest_id] = "Measuring the size of your folders"
-        src = selected_size()
+        src = selected_size(get_dest(dest_id))
         s = settings()  # backups run at the backup hour: estimate with the limit that applies then
         at = datetime.datetime.now().replace(hour=int(s["backup_hour"]), minute=30)
         d = get_dest(dest_id)

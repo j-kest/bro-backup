@@ -127,7 +127,8 @@ class Fits(unittest.TestCase):
         with mock.patch.object(backup, "tree_size", side_effect=AssertionError("walked again")):
             self.assertEqual(backup.sources_bytes(), 1234)
         with core.mutate() as st:
-            st["sources_measured"]["at"] -= backup.SIZE_FRESH + 1
+            for m in st["sources_measured"].values():
+                m["at"] -= backup.SIZE_FRESH + 1
         core.sources_size.clear()
         self.assertEqual(backup.sources_bytes(), 1234)  # older than a week: measured again
         with core.mutate() as st:

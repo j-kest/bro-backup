@@ -1,6 +1,6 @@
-# version : 1.4.1
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 19/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/core.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -25,7 +25,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.4.1"
+VERSION = "1.5.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -398,6 +398,12 @@ def mutate():
 
 def settings():
     return load_state()["settings"]
+
+
+def dest_sources(d=None, s=None):
+    """The folders a backup to this bro reads: his own choice, or (None) the folders in Settings."""
+    own = (d or {}).get("sources")
+    return list(own) if own is not None else list((s or settings())["sources"])
 
 
 def backups_paused(st=None):

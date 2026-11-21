@@ -222,6 +222,10 @@ diagnostics bundle (Logs page) of both bros and send it along.
 - [ ] **61. Folder sizes in the picker.** Settings: every folder shows "…" and then its size within a few
   seconds; open a folder with ▸ and the folders below get theirs too. Tick a folder and one inside it:
   "Selected" under the list counts the data once. On a NAS with a big pool the first sizes take longer.
+- [ ] **62. Folders per bro.** Overview, Folders next to a bro: choose "A choice of his own" and tick one
+  folder. Save without the password: refused. With the password: saved, a notification arrives, and the
+  button shows "1 own". Run a backup: only that folder goes to him (History, or Restore). Back to "The same
+  folders as in Settings": no password needed.
 
 ### Help
 

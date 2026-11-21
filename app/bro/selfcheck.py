@@ -1,6 +1,6 @@
-# version : 1.1.0
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 12/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/selfcheck.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -186,6 +186,16 @@ def selfcheck_checks():
                 "Check the mounts, or remove these folders in Settings.")
         else:
             add("This NAS", "Folders to back up", "ok", f"{len(plan)} folder(s), all present")
+    for d in load_state()["destinations"]:  # bros with folders of their own choice
+        if d.get("sources") is None or d.get("mode") == "revoked":
+            continue
+        missing = [p for p in d["sources"] if not os.path.isdir(p)]
+        if missing:
+            add("This NAS", f"Folders for {d['name']}", "err",
+                "Gone or not mounted: " + ", ".join(os.path.relpath(m, NAS_DIR) for m in missing),
+                "Check the mounts, or change his folders (Folders, next to him on the overview).")
+        else:
+            add("This NAS", f"Folders for {d['name']}", "ok", f"{len(d['sources'])} folder(s) of his own, all present")
     for i in plan:
         if i["origin"] == "dump":
             add("This NAS", f"Read {i['key']}", "ok", "Database dumps, made just before each backup")

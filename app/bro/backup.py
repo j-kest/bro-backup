@@ -1,6 +1,6 @@
-# version : 1.4.1
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 19/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -18,6 +18,7 @@ import time
 
 from . import alarm, checks, dumps, nas, procs
 from .core import (
+    dest_sources,
     version_or_none,
     int_or_none,
     clean_name,
@@ -267,11 +268,12 @@ def newest_snapshot(root):
     return (name, when), None
 
 
-def backup_plan():
-    """One item per selected folder: where restic reads it (live folder or ZFS snapshot) and how it is named."""
+def backup_plan(d=None):
+    """One item per folder this bro gets (his own choice or the folders in Settings): where restic reads it
+    (live folder or ZFS snapshot) and how it is named."""
     s = settings()
     nas = os.path.realpath(NAS_DIR)
-    sources = sorted({os.path.realpath(p) for p in s["sources"] if os.path.isdir(p)})
+    sources = sorted({os.path.realpath(p) for p in dest_sources(d, s) if os.path.isdir(p)})
     # a folder inside another selected folder is already covered
     sources = [p for p in sources if not any(p != q and p.startswith(q + os.sep) for q in sources)]
     plan = []
@@ -329,9 +331,10 @@ def restic_backup(d, label, repo_path=None, deadline=None, force=False):
     writes its index every few minutes, so the next run continues where this one stopped.
     """
     s = settings()
-    plan = backup_plan()
+    plan = backup_plan(d)
     if not plan:
-        raise JobError("No folders selected to back up (Settings)")
+        raise JobError("No folders selected to back up (Settings)" if d.get("sources") is None else
+                       f"No folders chosen for {d['name']} (Folders, next to him on the overview)")
     host = slug(s["name"])
     totals = {"data_added": 0, "total_bytes_processed": 0, "files_new": 0, "files_changed": 0, "files_unmodified": 0}
     warnings = [f"{i['key']}: {i['note']}" for i in plan if i["note"]]
@@ -378,7 +381,7 @@ def estimate_added(d, plan=None, s=None):
     """What a backup would add at the bro, from restic's dry run: it reads the changed files here and checks
     them against the index, but writes and sends nothing. None when restic could not tell."""
     s = s or settings()
-    plan = backup_plan() if plan is None else plan
+    plan = backup_plan(d) if plan is None else plan
     host, total = slug(s["name"]), 0
     for n, item in enumerate(plan, 1):
         activity[d["id"]] = f"Checking what is new {n}/{len(plan)} ({item['key']})"
@@ -521,29 +524,43 @@ FIT_MARGIN = 1.2  # restic compresses and deduplicates: data may take a bit less
 ROOMY = 10 * GIB  # with more free space than this (and 3 times the biggest recent backup) there is no dry run
 
 
-def sources_key(s=None):
-    return json.dumps(sorted((s or settings())["sources"]))
+def sources_key(s=None, d=None):
+    return json.dumps(sorted(dest_sources(d, s)))
 
 
 SIZE_FRESH = 7 * 24 * 3600  # a measurement of the folders is used this long, also after an update or restart
 
 
-def sources_bytes(s=None):
+def sources_bytes(s=None, d=None):
     """Total size of the selected folders. Walking a big pool reads a lot of metadata, so the result is kept in
     the state for SIZE_FRESH: an update, a restart or an hourly retry does not measure again. The space check
     only needs an estimate, and folders rarely change much in a week."""
     s = s or settings()
-    key = sources_key(s)
-    for cached in (sources_size.get(key), load_state().get("sources_measured")):
-        if cached and cached.get("key", key) == key and time.time() - cached["at"] < SIZE_FRESH:
+    key = sources_key(s, d)
+    for cached in (sources_size.get(key), measured().get(key)):
+        if cached and time.time() - cached["at"] < SIZE_FRESH:
             sources_size[key] = {"bytes": cached["bytes"], "at": cached["at"]}
             return cached["bytes"]
-    total = sum(tree_size(p) for p in s["sources"] if os.path.isdir(p))
+    total = sum(tree_size(p) for p in dest_sources(d, s) if os.path.isdir(p))
     t = time.time()
     sources_size[key] = {"bytes": total, "at": t}
     with mutate() as st:
-        st["sources_measured"] = {"key": key, "bytes": total, "at": t}
+        m = {k: v for k, v in _measured(st).items() if t - v["at"] < SIZE_FRESH}
+        m[key] = {"bytes": total, "at": t}
+        st["sources_measured"] = m
     return total
+
+
+def _measured(st):
+    """{sources key: {"bytes", "at"}}. Before 1.5.0 this held one measurement: {"key", "bytes", "at"}."""
+    m = st.get("sources_measured") or {}
+    if "key" in m:
+        return {m["key"]: {"bytes": m["bytes"], "at": m["at"]}}
+    return m
+
+
+def measured(st=None):
+    return _measured(st or load_state())
 
 
 def check_fits(d, info):
@@ -563,15 +580,15 @@ def check_fits(d, info):
     name = d["name"]
     first = not d.get("last_ok")
     # None: the last backup was made by a version before 1.2.0, which did not record the folders. Not a change.
-    changed = d.get("last_sources_key") not in (None, sources_key())
+    changed = d.get("last_sources_key") not in (None, sources_key(d=d))
     if first or changed:
         passed = d.get("fit_ok") or {}
-        if passed.get("key") == sources_key() and q >= (passed.get("quota") or 0):
+        if passed.get("key") == sources_key(d=d) and q >= (passed.get("quota") or 0):
             return  # checked when this first backup started: what it sends since then fills the room it found
         activity[d["id"]] = "Measuring your folders (once a week at most)"
-        total = sources_bytes()
+        total = sources_bytes(d=d)
         if total <= free * FIT_MARGIN:
-            update_dest(d["id"], fit_ok={"key": sources_key(), "quota": q})
+            update_dest(d["id"], fit_ok={"key": sources_key(d=d), "quota": q})
             return
         if total - stored > free * FIT_MARGIN:
             held = (f", {human_bytes(stored)} of it may already be at {name}" if stored >= GIB else "")  # a first backup that got somewhere
@@ -585,7 +602,7 @@ def check_fits(d, info):
             return
     need = estimate_added(d)
     if (first or changed) and (need is None or need <= free):
-        update_dest(d["id"], fit_ok={"key": sources_key(), "quota": q})
+        update_dest(d["id"], fit_ok={"key": sources_key(d=d), "quota": q})
     if need is not None and need > free:
         raise NoRoom(f"Not started: this backup would add {human_bytes(need)} at {name}, and only "
                        f"{human_bytes(free)} of the {q} GiB he gave you is free. Nothing was sent. Ask {name} for "
@@ -740,7 +757,7 @@ def run_backup(dest_id, scheduled=False):
 
         if d.get("fail_notified"):
             notify(f"BRO Backup to {d['name']} works again", "The last backup succeeded.", priority="default")
-        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(), fit_ok=None,
+        update_dest(dest_id, last_ok=iso(now()), last_error=None, last_warning=warning, pause_stop=None, last_sources_key=sources_key(d=get_dest(dest_id)), fit_ok=None,
                     fail_notified=None, no_room=None,
                     last_added=summary.get("data_added"), last_files={k: summary.get(k) for k in
                                                                       ("files_new", "files_changed", "files_unmodified")},

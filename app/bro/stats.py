@@ -1,6 +1,6 @@
-# version : 1.4.1
+# version : 1.5.0
 # created by : JK and CF
-# last edited : 19/11/2026
+# last edited : 21/11/2026
 # Name : bro-backup (bro/stats.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -221,9 +221,9 @@ def totals(st=None):
         received += max(0, now_v - start)
     key = sorted(st["settings"].get("sources") or [])
     cached = sources_size.get(json.dumps(key))
-    m = st.get("sources_measured") or {}
-    if not cached and m.get("key") == json.dumps(key):
-        cached = m  # measured before the last restart
+    if not cached:
+        from .backup import measured  # backup imports more than stats needs at start
+        cached = measured(st).get(json.dumps(key))  # measured before the last restart
     protected = cached["bytes"] if cached else max(((d.get("repo_stats") or {}).get("files") or 0
                                                     for d in st["destinations"]), default=0) or None
     return {"protected": protected,

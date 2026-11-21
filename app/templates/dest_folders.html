@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Folders for {{ d.name }}</h1>
+<p class="sub">Which of your folders go to {{ d.name }}. Each bro can get the folders in Settings, or a choice of his own:
+  for example everything to one bro, and only photos and documents to a bro with less space.</p>
+<form method="post" id="dest-folders-form">
+  <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+  <section>
+    <label class="check"><input type="radio" name="which" value="same" {{ 'checked' if same }}>
+      The same folders as in <a href="{{ url_for('settings_page') }}">Settings</a>
+      <span class="muted">({{ global_sources|length }} now; a change there also applies here)</span></label>
+    <label class="check"><input type="radio" name="which" value="own" {{ 'checked' if not same }}> A choice of his own</label>
+    <div id="own-folders" {{ 'hidden' if same }} style="margin-top:12px">
+      {% include "_folders.html" %}
+    </div>
+    {% if plan %}
+    <p class="muted" style="margin-top:12px">Now going to {{ d.name }}:
+      {% for i in plan %}<code>{{ i.key }}</code>{{ ', ' if not loop.last }}{% endfor %}.</p>
+    {% endif %}
+    <p class="muted">Leaving a folder out needs your password: nothing warns you later about a folder that is not sent.
+      What {{ d.name }} already has of a folder you leave out stays there, and you can still restore it.</p>
+    {% with reauth_optional = true, reauth_hint = 'only when you leave folders out' %}{% include "_reauth.html" %}{% endwith %}
+    <p><button>Save</button> <a class="btn ghost" href="{{ url_for('index') }}">Cancel</a></p>
+  </section>
+</form>
+<script nonce="{{ csp_nonce() }}">
+(function () {
+  var box = document.getElementById("own-folders");
+  document.querySelectorAll('input[name="which"]').forEach(function (r) {
+    r.addEventListener("change", function () { box.hidden = !document.querySelector('input[name="which"][value="own"]').checked; });
+  });
+})();
+</script>
+{% endblock %}
