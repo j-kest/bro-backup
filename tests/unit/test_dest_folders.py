@@ -81,3 +81,20 @@ class DestFolders(WebBase):
             st["sources_measured"] = {"key": key, "bytes": 77, "at": time.time()}
         core.sources_size.clear()
         self.assertEqual(backup.sources_bytes(), 77)
+
+
+class NoAllGoodDuringAlarm(WebBase):
+    def test_alarm_hides_all_good(self):
+        self.login()
+        mock.patch.dict(core.my_tickets, {"data": "t1", "pair": "t2"}).start()  # the connection is up
+        d = mk_dest()
+        core.update_dest(d["id"], last_ok=core.iso(core.now()), last_added=0)
+        with core.mutate() as st:
+            st["settings"]["sources"] = [core.NAS_DIR]
+        self.assertIn("All good", self.c.get("/").get_data(as_text=True))
+        with core.mutate() as st:
+            st["alarm"] = {"at": core.iso(core.now()), "dest": "Bob", "examples": [], "snaps": {}, "before": {},
+                           "reasons": ["data/nextcloud: 16807 of 49123 files new or changed (34%, normally about 1%)"]}
+        page = self.c.get("/").get_data(as_text=True)
+        self.assertNotIn("All good", page)
+        self.assertIn("Possible ransomware", page)

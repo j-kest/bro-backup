@@ -46,6 +46,8 @@
   input[type=text], input[type=password], input[type=number], input[type=date], select, textarea {
     width:100%; padding:8px; margin-top:4px; border:1px solid var(--line); border-radius:6px;
     background:var(--bg); color:var(--fg); font:inherit; font-weight:400; }
+  input:-webkit-autofill, input:-webkit-autofill:focus {  /* a filled-in password keeps the page colours */
+    -webkit-box-shadow:0 0 0 1000px var(--bg) inset; -webkit-text-fill-color:var(--fg); caret-color:var(--fg); }
   textarea { font-family:ui-monospace, monospace; font-size:12px; min-height:90px; }
   .check { font-weight:400; display:flex; gap:8px; align-items:center; margin:4px 0; }
   .check.d2 { margin-left:26px; }

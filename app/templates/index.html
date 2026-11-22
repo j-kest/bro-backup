@@ -9,6 +9,8 @@
   <div class="banner err">You have not selected any folders yet. <a href="{{ url_for('settings_page') }}">Choose them in Settings.</a></div>
 {% elif dests|selectattr('mode', 'equalto', 'hold')|list %}
   <div class="banner warn">Recovered. Backups are paused until you have restored your files.</div>
+{% elif alarm %}
+  {# the ransomware alarm below says what is going on: never "All good" next to it #}
 {% elif problems %}
   <div class="banner err">Problem with {{ problems|length }} bro(s). See below.</div>
 {% elif not dests %}
