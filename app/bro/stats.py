@@ -1,6 +1,6 @@
-# version : 1.5.0
+# version : 1.5.1
 # created by : JK and CF
-# last edited : 21/11/2026
+# last edited : 23/11/2026
 # Name : bro-backup (bro/stats.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -145,17 +145,26 @@ def check_running_out():
 
 # ---------------------------------------------------------------- per bro
 def reliability(d, days=30):
+    """Per day, not per attempt: after a failure the app tries again every hour, and a day with one success
+    after twenty retries is one good day, not one success in twenty-one. A day counts as good when a backup
+    succeeded on it, as failed when it had only failures. Interrupted runs (window, pause) do not count."""
     cut = now() - datetime.timedelta(days=days)
     runs = [r for r in d.get("runs") or [] if (parse(r.get("at")) or cut) >= cut]
-    counted = [r for r in runs if r.get("outcome") in ("ok", "failed", "no_room")]
-    ok = sum(1 for r in counted if r["outcome"] == "ok")
+    per_day = {}
+    for r in runs:
+        if r.get("outcome") in ("ok", "failed", "no_room"):
+            day = parse(r["at"]).astimezone().date()
+            per_day[day] = per_day.get(day, False) or r["outcome"] == "ok"
+    ok = sum(1 for v in per_day.values() if v)
     hist = [h for h in d.get("history") or [] if (parse(h.get("at")) or cut) >= cut]
     secs = [h.get("seconds") or 0 for h in hist]
-    fails = [r for r in d.get("runs") or [] if r.get("outcome") in ("failed", "no_room")]
-    return {"runs": len(counted), "ok": ok, "share": ok / len(counted) if counted else None,
-            "failed": len(counted) - ok, "interrupted": sum(1 for r in runs if r.get("outcome") == "interrupted"),
+    fails = [r for r in runs if r.get("outcome") in ("failed", "no_room")]
+    return {"runs": len(per_day), "ok": ok, "share": ok / len(per_day) if per_day else None,
+            "failed": len(per_day) - ok, "interrupted": sum(1 for r in runs if r.get("outcome") == "interrupted"),
+            "attempts": sum(1 for r in runs if r.get("outcome") in ("failed", "no_room")),
             "avg_seconds": sum(secs) / len(secs) if secs else None,
-            "since_failure": fails[-1]["at"] if fails else None}
+            "since_failure": fails[-1]["at"] if fails else None,
+            "reset": d.get("runs_reset")}
 
 
 def paths(d, days=30):

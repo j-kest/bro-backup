@@ -1,6 +1,6 @@
-# version : 1.5.0
+# version : 1.5.1
 # created by : JK and CF
-# last edited : 21/11/2026
+# last edited : 23/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -1259,6 +1259,19 @@ def stats_page():
                            folders=folders[:12], folder_max=max([f["bytes"] for f in folders] + [1]),
                            own=charts.line(st.get("space_history") or [], "v", human_bytes, "Used in the bro-backup folder"),
                            soon=stats.SOON_DAYS, trend=stats.TREND_DAYS, now_=now())
+
+
+@app.post("/dest/<dest_id>/reset-runs")
+def dest_reset_runs(dest_id):
+    """Start the reliability count again, for example after failures that were fixed. Only the count: the history
+    of successful backups and its charts stay."""
+    d = get_dest(dest_id)
+    if not d:
+        abort(404)
+    update_dest(dest_id, runs=[], runs_reset=iso(now()))
+    log.info("Reliability count of %s reset", d["name"])
+    flash(f"Counting again for {d['name']} from now.", "ok")
+    return redirect(url_for("stats_page"))
 
 
 @app.post("/databases/scan")

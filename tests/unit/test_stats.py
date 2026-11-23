@@ -49,6 +49,7 @@ class PerBro(unittest.TestCase):
 
     def test_reliability_paths_savings_folders(self):
         core.update_dest(self.d["id"], runs=[{"at": ago(40), "outcome": "failed"}] +
+                         [{"at": ago(12), "outcome": "failed"}] * 20 +  # a bad day: twenty hourly retries
                          [{"at": ago(i), "outcome": "ok"} for i in range(9)] + [{"at": ago(3), "outcome": "failed"},
                                                                                {"at": ago(2), "outcome": "interrupted"}],
                          history=[{"at": ago(i), "seconds": 60, "added": 100 * 1024 ** 2, "path": "direct" if i else "relay",
@@ -56,7 +57,8 @@ class PerBro(unittest.TestCase):
                          repo_stats={"at": ago(1), "stored": 60, "uncompressed": 90, "files": 100})
         d = core.get_dest(self.d["id"])
         r = stats.reliability(d)
-        self.assertEqual((r["runs"], r["ok"], r["failed"], r["interrupted"]), (10, 9, 1, 1))
+        # days, not attempts: day 3 had a failure and a success, so it is a good day
+        self.assertEqual((r["runs"], r["ok"], r["failed"], r["interrupted"], r["attempts"]), (10, 9, 1, 1, 21))
         self.assertEqual(r["avg_seconds"], 60)
         self.assertEqual(stats.paths(d), ({"direct": 3, "relay": 1}, 4))
         self.assertEqual(stats.savings(d)["share"], 0.4)
@@ -115,3 +117,23 @@ class Page(WebBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ResetCount(WebBase):
+    def test_reset_starts_counting_again(self):
+        self.login()
+        d = mk_dest()
+        core.update_dest(d["id"], runs=[{"at": ago(9), "outcome": "failed"}] * 30 + [{"at": ago(1), "outcome": "ok"}],
+                         history=[{"at": ago(1), "seconds": 60, "added": 1}])
+        page = self.c.get("/stats").get_data(as_text=True)
+        self.assertIn("50%", page)
+        self.assertIn("(1 of 2 days", page)
+        self.assertIn(f"/dest/{d['id']}/reset-runs", page)
+        self.c.post(f"/dest/{d['id']}/reset-runs", data={"csrf": self.csrf("/stats")})
+        d = core.get_dest(d["id"])
+        self.assertEqual(d["runs"], [])
+        self.assertTrue(d["history"])  # the backups and their charts stay
+        page = self.c.get("/stats").get_data(as_text=True)
+        self.assertIn("counting since", page)
+        self.assertNotIn("last failure", page)
+        self.assertEqual(self.c.post(f"/dest/{d['id']}/reset-runs").status_code, 400)  # needs the form token

@@ -226,6 +226,9 @@ diagnostics bundle (Logs page) of both bros and send it along.
   folder. Save without the password: refused. With the password: saved, a notification arrives, and the
   button shows "1 own". Run a backup: only that folder goes to him (History, or Restore). Back to "The same
   folders as in Settings": no password needed.
+- [ ] **63. Reliability per day.** Statistics: "Succeeded" counts days ("x of y days"), not attempts. After a
+  failure, "reset" under "last failure" asks for confirmation, then shows "counting since"; the charts of the
+  bro stay.
 
 ### Help
 

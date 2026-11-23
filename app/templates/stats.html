@@ -36,15 +36,21 @@
     {% for b in bros %}
     <tr><td><a href="{{ url_for('dest_history', dest_id=b.d.id) }}">{{ b.d.name }}</a></td>
       <td>{% if b.rel.runs %}<span class="{{ 'ok' if b.rel.share >= 0.95 else ('warn' if b.rel.share >= 0.8 else 'err') }}">{{ (b.rel.share * 100)|round|int }}%</span>
-          <span class="muted">({{ b.rel.ok }} of {{ b.rel.runs }}{% if b.rel.interrupted %}, {{ b.rel.interrupted }} paused or stopped by the window{% endif %})</span>
+          <span class="muted">({{ b.rel.ok }} of {{ b.rel.runs }} day{{ 's' if b.rel.runs != 1 }}{% if b.rel.interrupted %}, {{ b.rel.interrupted }} paused or stopped by the window{% endif %})</span>
           {% if b.rel.since_failure %}<br><span class="muted">last failure {{ b.rel.since_failure|ltime }}</span>{% endif %}
-        {% else %}<span class="muted">no backups yet</span>{% endif %}</td>
+          {% if b.rel.since_failure %}
+          <form class="inline" method="post" action="{{ url_for('dest_reset_runs', dest_id=b.d.id) }}"
+                data-confirm="Start counting again for {{ b.d.name }}? The failures so far are no longer counted. The history of backups and the charts stay.">
+            <input type="hidden" name="csrf" value="{{ csrf_token() }}"><button class="link" style="font-size:12px; color:var(--muted); text-decoration:underline">reset</button></form>
+          {% endif %}
+        {% elif b.rel.reset %}<span class="muted">counting since {{ b.rel.reset|ltime }}</span>{% else %}<span class="muted">no backups yet</span>{% endif %}</td>
       <td class="hide-sm">{{ b.rel.avg_seconds|duration if b.rel.avg_seconds else '-' }}</td>
       <td class="hide-sm">{% if b.path_n %}{% for k, n in b.paths|dictsort %}<span class="badge {{ 'warn' if k == 'relay' else 'muted' }}">{{ {'direct': 'direct', 'lan': 'local network', 'relay': 'via relay'}.get(k, 'unknown') }} {{ (n * 100 / b.path_n)|round|int }}%</span>{% endfor %}{% else %}-{% endif %}</td>
       <td>{% if b.save %}{{ (b.save.share * 100)|round|int }}% <span class="muted">({{ b.save.files|bytes }} in {{ b.save.stored|bytes }})</span>{% else %}<span class="muted">measured weekly</span>{% endif %}</td></tr>
     {% endfor %}
   </table>
-  <p class="muted" style="margin:8px 0 0">Click a bro for his charts: data sent, space used, duration and upload speed per backup.
+  <p class="muted" style="margin:8px 0 0">"Succeeded" counts days, not attempts: after a failure the app tries again every hour,
+    and a day on which a backup succeeded counts as good. Click a bro for his charts: data sent, space used, duration and upload speed per backup.
     "Saved by compression" compares the size of what the backup holds with what it takes at your bro, after compression and deduplication.</p>
 </section>
 {% endif %}
