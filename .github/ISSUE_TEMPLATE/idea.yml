@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Idea or wish
+description: Something BRO Backup could do, or do better.
+labels: ["idea"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you want to do, and what stops you now?
+      description: The situation first, then the solution you have in mind. Another solution may fit better.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: How you would like it to work
+  - type: dropdown
+    id: who
+    attributes:
+      label: Who needs it
+      options:
+        - The one who backs up
+        - The bro who stores the backup
+        - Both

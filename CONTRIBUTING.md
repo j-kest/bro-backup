@@ -37,3 +37,4 @@ Pull requests without a sign-off are not merged.
   # SPDX-License-Identifier: AGPL-3.0-or-later
   ```
 - Do not report security problems as public issues. See `SECURITY.md`.
+- Everyone here follows `CODE_OF_CONDUCT.md`.

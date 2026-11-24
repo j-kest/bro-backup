@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Something does not work
+description: A backup fails, a page shows an error, or something behaves differently than described.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. **Do not post** IP addresses, tickets, recovery codes, keys, passwords or e-mail
+        addresses: blank them out in logs and screenshots. A security problem goes to a private report instead
+        (see SECURITY.md), not here.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Bottom right in the app, or the badge next to your bro (for example 1.5.1).
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: NAS
+      options:
+        - TrueNAS SCALE / Community Edition
+        - Synology DSM
+        - Other Docker host
+    validations:
+      required: true
+  - type: input
+    id: platform_version
+    attributes:
+      label: NAS software version
+      placeholder: "TrueNAS 25.10.0, DSM 7.2.2, ..."
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: And what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to make it happen again
+      placeholder: |
+        1. ...
+        2. ...
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: Logs page in the app, around the time it happened. Blank out addresses and tickets.
+      render: text
+  - type: dropdown
+    id: both
+    attributes:
+      label: Is the other bro on the same version?
+      options:
+        - "Yes"
+        - "No"
+        - "I don't know"
