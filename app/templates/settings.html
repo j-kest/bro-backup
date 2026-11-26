@@ -34,6 +34,9 @@
     <h2 style="margin-top:16px">Leave out</h2>
     <label class="check"><input type="checkbox" name="exclude_defaults" value="1" {{ 'checked' if s.exclude_defaults }}>
       Skip junk: <span class="muted">{{ default_excludes|join(', ') }}</span></label>
+    <label class="check"><input type="checkbox" name="exclude_nextcloud_previews" value="1" {{ 'checked' if s.exclude_nextcloud_previews }}>
+      Skip Nextcloud previews <span class="muted">(<code>appdata_*/preview</code>: thumbnails Nextcloud makes again by itself.
+      They can be large and change in bulk, which looks like ransomware to the alarm.)</span></label>
     <label>Also skip (one pattern per line, e.g. <code>*.iso</code> or <code>cache</code>)
       <textarea name="excludes" rows="3" placeholder="*.iso">{{ s.excludes|join('\n') }}</textarea></label>
     <label>Skip files larger than (GB, 0 = no limit)<input type="number" name="exclude_larger_gb" min="0" step="0.1" value="{{ s.exclude_larger_gb }}" style="max-width:160px"></label>

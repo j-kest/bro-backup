@@ -1,6 +1,6 @@
-# version : 1.5.0
+# version : 1.6.0
 # created by : JK and CF
-# last edited : 21/11/2026
+# last edited : 26/11/2026
 # Name : bro-backup (bro/backup.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -16,7 +16,7 @@ import subprocess
 import threading
 import time
 
-from . import alarm, checks, dumps, nas, procs
+from . import alarm, checks, dumps, nas, nextcloud, procs
 from .core import (
     dest_sources,
     version_or_none,
@@ -102,6 +102,8 @@ def scrub(d, text):
 def exclude_args(s=None):
     s = s or settings()
     pats = (DEFAULT_EXCLUDES if s.get("exclude_defaults", True) else []) + list(s.get("excludes") or [])
+    if s.get("exclude_nextcloud_previews", True):
+        pats.append(nextcloud.PREVIEW_EXCLUDE)  # thumbnails: Nextcloud makes them again, and they churn
     out = []
     for pat in pats:
         out += ["--exclude", pat]

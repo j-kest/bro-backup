@@ -229,6 +229,10 @@ diagnostics bundle (Logs page) of both bros and send it along.
 - [ ] **63. Reliability per day.** Statistics: "Succeeded" counts days ("x of y days"), not attempts. After a
   failure, "reset" under "last failure" asks for confirmation, then shows "counting since"; the charts of the
   bro stay.
+- [ ] **64. Nextcloud.** With the Nextcloud app installed, tick only its `data` folder: the self-check shows
+  "Nextcloud in ..." with "Not to ...: the installation (config and apps), the database". Tick the folder that
+  holds all three: OK, and a row "one moment" (OK with one recursive snapshot task). Settings, Leave out:
+  "Skip Nextcloud previews" is on; after a backup, Restore does not show `appdata_*/preview`.
 
 ### Help
 

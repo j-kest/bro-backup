@@ -1,6 +1,6 @@
-# version : 1.5.1
+# version : 1.6.0
 # created by : JK and CF
-# last edited : 23/11/2026
+# last edited : 26/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -1138,6 +1138,7 @@ def settings_page():
                 s["mail_from"] = f.get("mail_from", "").strip()
                 s["mail_to"] = f.get("mail_to", "").strip()
                 s["exclude_defaults"] = f.get("exclude_defaults") == "1"
+                s["exclude_nextcloud_previews"] = f.get("exclude_nextcloud_previews") == "1"
                 pats = [x.strip() for x in f.get("excludes", "").splitlines() if x.strip()]
                 if len(pats) > 200 or any(len(x) > 300 for x in pats):
                     raise ValueError("Too many or too long exclusion patterns")

@@ -1,6 +1,6 @@
-# version : 1.5.0
+# version : 1.6.0
 # created by : JK and CF
-# last edited : 21/11/2026
+# last edited : 26/11/2026
 # Name : bro-backup (bro/selfcheck.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -19,9 +19,10 @@ import zipfile
 
 from flask import Response, flash, jsonify, redirect, render_template, request, url_for
 
-from . import alarm, backup, dumps, kept, lan, nas, peers, procs, recovery, safety, scheduler, space, updates, urbackup, web
+from . import alarm, backup, dumps, kept, lan, nas, nextcloud, peers, procs, recovery, safety, scheduler, space, updates, urbackup, web
 from .core import (
     CONFIG_DIR,
+    dest_sources,
     backups_paused,
     DATA_DIR,
     ESCROW_DIR,
@@ -108,6 +109,74 @@ def versions_row(st):
                 "Ask them to update. The speed test and the speed limit for bros need the same version on both sides.")
     return ("Your bros", "Versions", "ok", f"All on {VERSION} or newer" + (
         f"; not known yet for {', '.join(unknown)}" if unknown else ""), None)
+
+
+SNAP_SPREAD_MIN = 15  # snapshots of the parts of one Nextcloud this far apart do not belong together
+
+
+def nextcloud_rows(st, s, add):
+    """Does every bro get all of each Nextcloud (files, installation, database), from snapshots of one moment?"""
+    bros = [d for d in st["destinations"] if d.get("mode") != "revoked"]
+    choices = {}
+    for d in bros:
+        choices.setdefault(tuple(sorted(dest_sources(d, s))), []).append(d["name"])
+    if not bros:
+        choices[tuple(sorted(s["sources"]))] = []
+    seen = {}
+    for sources, names in choices.items():
+        try:
+            found = nextcloud.find(list(sources), NAS_DIR)
+        except OSError as e:
+            add("This NAS", "Nextcloud", "warn", f"Could not look for Nextcloud: {e.strerror}")
+            return
+        for inst in found:
+            key = inst["html"] or inst["data"]
+            seen.setdefault(key, {"inst": inst, "missing": {}})
+            for part, label in (("data", "the users' files"), ("html", "the installation (config and apps)"),
+                                ("db", "the database")):
+                path = inst[part]
+                if path and nextcloud.included(path, sources):
+                    continue
+                what = label if path else f"{label} (not found next to the other parts)"
+                for n in names or ["your bros"]:
+                    seen[key]["missing"].setdefault(n, []).append(what)
+    for key, v in seen.items():
+        inst, where = v["inst"], os.path.relpath(os.path.dirname(key), NAS_DIR)
+        name = f"Nextcloud in {where}"
+        if v["missing"]:
+            text = "; ".join(f"Not to {bro}: {', '.join(whats)}" for bro, whats in v["missing"].items())
+            add("This NAS", name, "warn", text,
+                "Without the database and the installation a restore gives back the files, but not the shares, "
+                "calendars, contacts or versions. Tick all three folders (Settings, or Folders next to a bro): "
+                + ", ".join(os.path.relpath(p, NAS_DIR) for p in (inst["html"], inst["data"], inst["db"]) if p) + ".")
+        else:
+            add("This NAS", name, "ok", "Files, installation and database go to every bro"
+                + ("" if s.get("exclude_nextcloud_previews", True) else ", previews included"))
+        if s["use_zfs_snapshots"]:
+            snap_row(name, [p for p in (inst["html"], inst["data"], inst["db"]) if p], add)
+
+
+def snap_row(name, paths, add):
+    """The parts are read from ZFS snapshots: are those of about the same moment? Then the database fits the files."""
+    times, live = {}, []
+    for p in paths:
+        root = backup.zfs_root(p)
+        snap, _why = backup.newest_snapshot(root) if root else (None, None)
+        if snap and snap[1]:
+            times[os.path.relpath(p, NAS_DIR)] = snap[1]
+        else:
+            live.append(os.path.relpath(p, NAS_DIR))
+    if live:
+        add("This NAS", f"{name}: one moment", "warn", "Read live, not from a snapshot: " + ", ".join(live),
+            "Create one periodic snapshot task in TrueNAS on the dataset that holds all parts, with Recursive on: "
+            "then files and database come from the same moment.")
+    elif len(times) > 1:
+        spread = (max(times.values()) - min(times.values())).total_seconds() / 60
+        if spread > SNAP_SPREAD_MIN:
+            add("This NAS", f"{name}: one moment", "warn", f"The newest snapshots of its parts are {spread:.0f} minutes apart",
+                "Use one periodic snapshot task with Recursive on, on the dataset that holds all parts.")
+        else:
+            add("This NAS", f"{name}: one moment", "ok", "Files and database come from snapshots of the same moment")
 
 
 def selfcheck_checks():
@@ -224,6 +293,7 @@ def selfcheck_checks():
             add("This NAS", "Immich database dumps", "warn",
                 f"Newest dump in {where} is {x['age_h']:.0f} h old" if x["age_h"] is not None else f"No dumps in {where}",
                 "In Immich: Administration, Settings, Backup settings: check that database dumps are switched on.")
+    nextcloud_rows(st, s, add)
     tz = os.environ.get("TZ") or "UTC"
     if tz in ("UTC", "Etc/UTC"):
         add("This NAS", "Time zone", "warn", "UTC: the nightly backup runs at UTC time",

@@ -48,8 +48,10 @@ class Errors(unittest.TestCase):
 
 class Excludes(unittest.TestCase):
     def test_args(self):
-        s = {"exclude_defaults": False, "excludes": ["*.tmp"], "exclude_larger_gb": 1.5}
+        s = {"exclude_defaults": False, "exclude_nextcloud_previews": False, "excludes": ["*.tmp"], "exclude_larger_gb": 1.5}
         self.assertEqual(backup.exclude_args(s), ["--exclude", "*.tmp", "--exclude-larger-than", "1536M"])
+        s["exclude_nextcloud_previews"] = True  # the default
+        self.assertEqual(backup.exclude_args(s)[:4], ["--exclude", "*.tmp", "--exclude", "appdata_*/preview"])
 
     def test_pattern_escapes_wildcards(self):
         self.assertEqual(backup.restic_pattern("/nas/a[1]*?.txt"), r"/nas/a\[1\]\*\?.txt")

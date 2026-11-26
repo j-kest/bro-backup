@@ -1,6 +1,6 @@
-# version : 1.5.1
+# version : 1.6.0
 # created by : JK and CF
-# last edited : 23/11/2026
+# last edited : 26/11/2026
 # Name : bro-backup (bro/core.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -25,7 +25,7 @@ from collections import deque
 from contextlib import contextmanager
 from email.message import EmailMessage
 
-VERSION = "1.5.1"
+VERSION = "1.6.0"
 # AGPL-3.0 section 13: users interacting over a network must be able to get the source.
 # Change this when you run a modified version.
 SOURCE_URL = os.environ.get("SOURCE_URL", "https://github.com/j-kest/bro-backup")
@@ -72,7 +72,7 @@ DEFAULT_SETTINGS = {"name": "", "pw_hash": "", "sources": [], "backup_hour": 2,
                     "recv_limit_kib": 0, "recv_limit_night_kib": -1, "keep_deleted_days": 7,
                     "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "",
                     "smtp_password": "", "mail_from": "", "mail_to": "",
-                    "exclude_defaults": True, "excludes": [], "exclude_larger_gb": 0,
+                    "exclude_defaults": True, "exclude_nextcloud_previews": True, "excludes": [], "exclude_larger_gb": 0,
                     "report_day": 0, "alert_receivers": True, "update_check": True, "ransomware_watch": True,
                     "lan_addrs": None, "mail_method": "smtp", "m365_tenant": "", "m365_client_id": "",
                     "m365_secret": "", "m365_sender": "", "m365_secret_expires": ""}
