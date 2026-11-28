@@ -1,6 +1,6 @@
-# version : 1.6.0
+# version : 1.6.1
 # created by : JK and CF
-# last edited : 26/11/2026
+# last edited : 28/11/2026
 # Name : bro-backup (bro/selfcheck.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -22,7 +22,6 @@ from flask import Response, flash, jsonify, redirect, render_template, request, 
 from . import alarm, backup, dumps, kept, lan, nas, nextcloud, peers, procs, recovery, safety, scheduler, space, updates, urbackup, web
 from .core import (
     CONFIG_DIR,
-    dest_sources,
     backups_paused,
     DATA_DIR,
     ESCROW_DIR,
@@ -116,33 +115,13 @@ SNAP_SPREAD_MIN = 15  # snapshots of the parts of one Nextcloud this far apart d
 
 def nextcloud_rows(st, s, add):
     """Does every bro get all of each Nextcloud (files, installation, database), from snapshots of one moment?"""
-    bros = [d for d in st["destinations"] if d.get("mode") != "revoked"]
-    choices = {}
-    for d in bros:
-        choices.setdefault(tuple(sorted(dest_sources(d, s))), []).append(d["name"])
-    if not bros:
-        choices[tuple(sorted(s["sources"]))] = []
-    seen = {}
-    for sources, names in choices.items():
-        try:
-            found = nextcloud.find(list(sources), NAS_DIR)
-        except OSError as e:
-            add("This NAS", "Nextcloud", "warn", f"Could not look for Nextcloud: {e.strerror}")
-            return
-        for inst in found:
-            key = inst["html"] or inst["data"]
-            seen.setdefault(key, {"inst": inst, "missing": {}})
-            for part, label in (("data", "the users' files"), ("html", "the installation (config and apps)"),
-                                ("db", "the database")):
-                path = inst[part]
-                if path and nextcloud.included(path, sources):
-                    continue
-                what = label if path else f"{label} (not found next to the other parts)"
-                for n in names or ["your bros"]:
-                    seen[key]["missing"].setdefault(n, []).append(what)
-    for key, v in seen.items():
-        inst, where = v["inst"], os.path.relpath(os.path.dirname(key), NAS_DIR)
-        name = f"Nextcloud in {where}"
+    try:
+        found = nextcloud.status(st, s, NAS_DIR)
+    except OSError as e:
+        add("This NAS", "Nextcloud", "warn", f"Could not look for Nextcloud: {e.strerror}")
+        return
+    for v in found:
+        inst, name = v["inst"], f"Nextcloud in {v['where']}"
         if v["missing"]:
             text = "; ".join(f"Not to {bro}: {', '.join(whats)}" for bro, whats in v["missing"].items())
             add("This NAS", name, "warn", text,

@@ -57,6 +57,14 @@
       {% endfor %}
     </table>
     {% elif db_scan.at and not db_scan.running %}<p class="muted">No SQLite databases found in your folders.</p>{% endif %}
+    {% for v in nextcloud %}
+      <p><span class="badge {{ 'warn' if v.missing else 'ok' }}">Nextcloud</span> In <code>{{ v.where }}</code>:
+        {% for part, label in nextcloud_parts %}{% set p = v.rel[part] %}{{ label }} {% if p %}<code>{{ p }}</code>{% else %}<span class="warn">not found</span>{% endif %}{{ '; ' if not loop.last else '.' }}{% endfor %}
+        {% if v.missing %}<br><span class="warn">{% for bro, whats in v.missing.items() %}Not to {{ bro }}: {{ whats|join(', ') }}{{ '. ' if not loop.last }}{% endfor %}.</span>
+        Without the database and the installation a restore gives back the files, but not the shares, calendars, contacts or versions.
+        {% else %}All three go to every bro: the database is read from the same snapshot, which PostgreSQL treats like a restart after a power cut.{% endif %}</p>
+    {% endfor %}
+    {% if db_scan.at and not db_scan.running and not nextcloud %}<p class="muted">No Nextcloud found in your folders.</p>{% endif %}
     {% for folder in db_scan.immich or [] %}
       <p><span class="badge ok">Immich</span> Database dumps found in <code>{{ folder[5:] if folder.startswith('/nas/') else folder }}</code>. Immich makes those itself every day, and they go along with that folder. The self-check warns when they get old.</p>
     {% endfor %}

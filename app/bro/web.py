@@ -1,6 +1,6 @@
-# version : 1.6.0
+# version : 1.6.1
 # created by : JK and CF
-# last edited : 26/11/2026
+# last edited : 28/11/2026
 # Name : bro-backup (bro/web.py)
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 the BRO Backup authors
@@ -29,6 +29,7 @@ from . import (
     lan,
     m365,
     nas,
+    nextcloud,
     pair_api,
     pairing,
     peers,
@@ -1181,8 +1182,17 @@ def settings_page():
                            excluded=nas.find_self_in_nas(), presets=RETENTION_PRESETS, plan=backup.backup_plan(),
                            rc=st["recovery"], dests=st["destinations"], default_excludes=DEFAULT_EXCLUDES,
                            weekdays=WEEKDAYS, db_scan=st.get("db_scan") or {}, dump_results=st.get("dump_results") or {},
+                           nextcloud=_nextcloud(st), nextcloud_parts=nextcloud.PARTS,
                            db_choices=sorted(set(st["settings"].get("sqlite_dbs") or []) |
                                              {x["path"] for x in (st.get("db_scan") or {}).get("sqlite", [])}))
+
+
+def _nextcloud(st):
+    try:
+        return nextcloud.status(st, st["settings"], NAS_DIR)
+    except OSError as e:
+        log.info("Could not look for Nextcloud: %s", e)
+        return []
 
 
 def _bros_without_limit(st):

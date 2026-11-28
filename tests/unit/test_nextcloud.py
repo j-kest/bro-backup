@@ -117,5 +117,28 @@ class Setting(WebBase):
         self.assertNotIn("appdata_*/preview", backup.exclude_args())
 
 
+class SettingsPage(Tree, WebBase):
+    def setUp(self):
+        Tree.setUp(self)
+        WebBase.setUp(self)
+
+    def test_databases_section_shows_nextcloud(self):
+        with core.mutate() as st:
+            st["settings"]["sources"] = [self.data]
+            st["db_scan"] = {"at": core.iso(core.now()), "sqlite": [], "immich": [], "running": False}
+        self.login()
+        page = self.c.get("/settings").get_data(as_text=True)
+        self.assertIn(">Nextcloud</span> In <code>tank/apps/nextcloud</code>", page)
+        self.assertIn("the database <code>tank/apps/nextcloud/pgdata</code>", page)
+        self.assertIn("Not to your bros: the installation (config and apps), the database", page)
+        with core.mutate() as st:
+            st["settings"]["sources"] = [self.nc]
+        page = self.c.get("/settings").get_data(as_text=True)
+        self.assertIn("All three go to every bro", page)
+        with core.mutate() as st:
+            st["settings"]["sources"] = [os.path.dirname(touch("tank", "media", "film.mkv"))]
+        self.assertIn("No Nextcloud found in your folders.", self.c.get("/settings").get_data(as_text=True))
+
+
 if __name__ == "__main__":
     unittest.main()
