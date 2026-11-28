@@ -151,7 +151,18 @@ def csp_nonce():
 app.jinja_env.globals.update(csrf_token=csrf_token, version=VERSION, source_url=SOURCE_URL, bro_version=bro_version,
                              csp_nonce=csp_nonce, timedelta=datetime.timedelta,
                              nas_dir=NAS_DIR,
-                             two_step=lambda: auth.two_step_on())
+                             two_step=lambda: auth.two_step_on(), page_width=lambda: _page_width())
+
+
+PAGE_WIDTHS = ("normal", "wide", "full")
+
+
+def _page_width():
+    try:
+        w = settings().get("page_width")
+    except Exception:  # a page must render even when the state cannot be read
+        return "normal"
+    return w if w in PAGE_WIDTHS else "normal"
 
 
 @app.before_request
@@ -1147,6 +1158,8 @@ def settings_page():
                 s["exclude_larger_gb"] = max(0.0, float(f.get("exclude_larger_gb") or 0))
                 rd = int(f.get("report_day", 0))
                 s["report_day"] = rd if -1 <= rd <= 6 else 0
+                if f.get("page_width") in PAGE_WIDTHS:
+                    s["page_width"] = f["page_width"]
                 s["alert_receivers"] = f.get("alert_receivers") == "1"
                 s["update_check"] = f.get("update_check") == "1"
                 if "lan_addrs" in f:

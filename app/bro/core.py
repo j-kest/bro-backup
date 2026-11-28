@@ -73,7 +73,7 @@ DEFAULT_SETTINGS = {"name": "", "pw_hash": "", "sources": [], "backup_hour": 2,
                     "smtp_host": "", "smtp_port": 587, "smtp_security": "starttls", "smtp_user": "",
                     "smtp_password": "", "mail_from": "", "mail_to": "",
                     "exclude_defaults": True, "exclude_nextcloud_previews": True, "excludes": [], "exclude_larger_gb": 0,
-                    "report_day": 0, "alert_receivers": True, "update_check": True, "ransomware_watch": True,
+                    "report_day": 0, "page_width": "normal", "alert_receivers": True, "update_check": True, "ransomware_watch": True,
                     "lan_addrs": None, "mail_method": "smtp", "m365_tenant": "", "m365_client_id": "",
                     "m365_secret": "", "m365_sender": "", "m365_secret_expires": ""}
 # Junk most people never want in a backup: OS thumbnails and trash, Synology system folders,

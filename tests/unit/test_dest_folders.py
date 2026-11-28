@@ -98,3 +98,21 @@ class NoAllGoodDuringAlarm(WebBase):
         page = self.c.get("/").get_data(as_text=True)
         self.assertNotIn("All good", page)
         self.assertIn("Possible ransomware", page)
+
+
+class PageWidth(WebBase):
+    def test_choose_page_width(self):
+        self.login()
+        page = self.c.get("/settings").get_data(as_text=True)
+        self.assertIn('<body class="w-normal">', page)
+        data = {"csrf": self.csrf("/settings"), "backup_hour": "2", "alert_hours": "72", "default_quota_gib": "500",
+                "retention": "standard", "ransomware_watch": "1", "alert_receivers": "1", "restore_test": "1",
+                "report_day": "0", "exclude_defaults": "1", "exclude_nextcloud_previews": "1", "page_width": "wide"}
+        self.assertIn("Settings saved", self.c.post("/settings", data=data, follow_redirects=True).get_data(as_text=True))
+        self.assertEqual(core.settings()["page_width"], "wide")
+        self.assertIn('<body class="w-wide">', self.c.get("/").get_data(as_text=True))
+        data.update(csrf=self.csrf("/settings"), page_width="huge")  # not a choice: unchanged
+        self.c.post("/settings", data=data)
+        self.assertEqual(core.settings()["page_width"], "wide")
+        self.c.post("/logout", data={"csrf": self.csrf("/")})
+        self.assertIn('<body class="w-wide">', self.c.get("/login").get_data(as_text=True))  # also before login

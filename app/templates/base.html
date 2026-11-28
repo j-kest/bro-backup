@@ -34,6 +34,8 @@
   header .brand { opacity:1; }
   header button.link { color:var(--head-fg); opacity:.82; font-weight:500; }
   main { max-width:960px; margin:0 auto; padding:20px 16px 64px; }
+  body.w-wide main, body.w-wide header .in { max-width:1280px; }
+  body.w-full main, body.w-full header .in { max-width:none; padding-left:24px; padding-right:24px; }
   h1 { font-size:24px; font-weight:800; letter-spacing:-.015em; margin:0 0 4px; }
   h2 { font-size:17px; font-weight:700; margin:0 0 10px; }
   .sub { color:var(--muted); margin:0 0 18px; }
@@ -122,7 +124,7 @@
   @media (max-width:640px) { .hide-sm { display:none; } }
 </style>
 </head>
-<body>
+<body class="w-{{ page_width() }}">
 {% if session.ok %}
 <header><div class="in">
   <a class="brand" href="{{ url_for('index') }}">BRO Backup</a>

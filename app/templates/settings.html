@@ -186,6 +186,15 @@
     <p class="muted">Asks GitHub for the latest release. Nothing about this NAS, your bros or your backups is sent. Updating is always up to you.</p>
   </section>
   <section>
+    <h2>Display</h2>
+    <label>Page width on a computer
+      <select name="page_width" style="max-width:320px">
+        {% for v, label in [('normal', 'Normal (960 px)'), ('wide', 'Wide (1280 px)'), ('full', 'Full width of the window')] %}
+        <option value="{{ v }}" {{ 'selected' if s.page_width == v }}>{{ label }}</option>{% endfor %}
+      </select></label>
+    <p class="muted">On a phone every choice looks the same.</p>
+  </section>
+  <section>
     <h2>Password and two-step login</h2>
     <p>Change your password and turn on two-step login under <a href="{{ url_for('security_page') }}">Security</a>.</p>
   </section>
