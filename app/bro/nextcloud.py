@@ -1,4 +1,4 @@
-# version : 1.6.1
+# version : 1.6.2
 # created by : JK and CF
 # last edited : 28/11/2026
 # Name : bro-backup (bro/nextcloud.py)
@@ -13,7 +13,7 @@ the shares, calendars, contacts, versions or who has access to what.
 
 How the parts are recognised, without touching Nextcloud itself:
   html      a folder with the `occ` program and config/config.php
-  data      a folder with the `.ocdata` file Nextcloud puts there
+  data      a folder with the `.ncdata` file Nextcloud puts there (`.ocdata` before Nextcloud 31)
   database  a PostgreSQL data folder (PG_VERSION) or a MariaDB/MySQL one (ibdata1), next to the other parts
 html and data belong together when config.php's instanceid matches the data folder's appdata_<instanceid>.
 
@@ -22,8 +22,11 @@ The app cannot switch on Nextcloud's maintenance mode or make a database dump: t
 the Nextcloud containers (the Docker socket), which is root on the NAS. A ZFS snapshot of the database
 folder is a usable backup instead: PostgreSQL treats it like a restart after a power cut."""
 
+import logging
 import os
 import re
+
+log = logging.getLogger("bro-backup")
 
 DEPTH = 3                      # how deep below a selected folder, and below the folder that holds a part
 PREVIEW_EXCLUDE = "appdata_*/preview"   # thumbnails Nextcloud makes again by itself
@@ -35,7 +38,7 @@ SKIP = {".zfs", "@eaDir", "#recycle", "#snapshot", "node_modules"}
 def _kind(path, files):
     if "occ" in files and os.path.isfile(os.path.join(path, "config", "config.php")):
         return "html"
-    if ".ocdata" in files:
+    if ".ncdata" in files or ".ocdata" in files:
         return "data"
     if "PG_VERSION" in files and "postgresql.conf" in files:
         return "postgres"
@@ -46,10 +49,11 @@ def _kind(path, files):
 
 def _walk(top, depth=DEPTH):
     """(folder, kind) for every part up to `depth` levels below top. Does not go into a part: a data folder
-    can hold millions of files."""
+    can hold millions of files. PostgreSQL 18 keeps its data two levels down (18/docker): within reach."""
     top = os.path.normpath(top)
     base = top.count(os.sep)
-    for cur, dirs, files in os.walk(top):
+    for cur, dirs, files in os.walk(top, onerror=lambda e: log.info("Nextcloud: cannot read %s: %s",
+                                                                    e.filename, e.strerror)):
         kind = _kind(cur, files)
         if kind:
             dirs[:] = []
@@ -72,11 +76,16 @@ def _config(html):
 
 
 def _instance_of_data(data):
+    """The instance id of a data folder, when it has one appdata_ folder (after a reinstall it has more)."""
     try:
         names = [x for x in os.listdir(data) if x.startswith("appdata_")]
     except OSError:
         return None
     return names[0][len("appdata_"):] if len(names) == 1 else None
+
+
+def _belongs(data, iid):
+    return bool(iid) and os.path.isdir(os.path.join(data, "appdata_" + iid))
 
 
 def find(roots, nas_dir):
@@ -101,7 +110,7 @@ def find(roots, nas_dir):
     out, used = [], set()
     for h in sorted(htmls):
         iid, dbtype = _config(h)
-        data = next((x for x in datas if iid and _instance_of_data(x) == iid), None)
+        data = next((x for x in datas if _belongs(x, iid)), None)  # also on another pool
         if data is None:  # no instanceid to match: a data folder that is the only one next to it
             near = [x for x in datas if os.path.dirname(x) == os.path.dirname(h)]
             data = near[0] if len(near) == 1 else None
@@ -116,16 +125,20 @@ def find(roots, nas_dir):
             continue
         anchor = inst["html"] or inst["data"]
         want = "mariadb" if inst["dbtype"] == "mysql" else ("postgres" if inst["dbtype"] == "pgsql" else None)
-        near = [d for d in dbs if (want is None or parts[d] == want) and _distance(d, anchor) <= 2]
+        fits = [d for d in dbs if want is None or parts[d] == want]
+        near = [d for d in fits if _distance(d, anchor) <= 2]
+        if not near:  # on another pool: only a database folder that says it is Nextcloud's
+            near = [d for d in fits if "nextcloud" in d.lower()]
         near.sort(key=lambda d: (_distance(d, anchor), "nextcloud" not in d.lower(), d))
         inst["db"] = near[0] if near else None
     return [i for i in out if any(_inside_any(r, i) for r in roots)]
 
 
-def _distance(a, b):
-    """Folder levels from a and b up to the folder that holds both: siblings are 1 apart, cousins 2."""
-    common = os.path.commonpath([a, b])
-    return max(len(os.path.relpath(a, common).split(os.sep)), len(os.path.relpath(b, common).split(os.sep)))
+def _distance(db, anchor):
+    """Folder levels from anchor up to the folder that also holds db: a sibling is 1, a cousin 2. How deep db
+    sits below that folder does not count (PostgreSQL 18: postgres_data/18/docker)."""
+    common = os.path.commonpath([db, anchor])
+    return len(os.path.relpath(anchor, common).split(os.sep)) if common != anchor else 0
 
 
 def _covered(inst):
@@ -162,7 +175,7 @@ def status(st, s, nas_dir):
                 path = inst[part]
                 if path and included(path, sources):
                     continue
-                what = label if path else f"{label} (not found next to the other parts)"
+                what = label if path else f"{label} (not found: not in your folders, and not next to the other parts)"
                 for n in names or ["your bros"]:
                     v["missing"].setdefault(n, []).append(what)
     return list(seen.values())

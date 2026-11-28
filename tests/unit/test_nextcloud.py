@@ -117,6 +117,43 @@ class Setting(WebBase):
         self.assertNotIn("appdata_*/preview", backup.exclude_args())
 
 
+class TwoPools(unittest.TestCase):
+    """The TrueNAS app with its files on a big pool and the rest on a fast one, Nextcloud 31+ and PostgreSQL 18."""
+    def setUp(self):
+        _env.reset()
+        shutil.rmtree(core.NAS_DIR, ignore_errors=True)
+        os.makedirs(core.NAS_DIR)
+        self.addCleanup(shutil.rmtree, core.NAS_DIR, True)
+        touch("fast", "nextcloud", "html", "occ")
+        touch("fast", "nextcloud", "html", "config", "config.php", text=CONFIG)
+        touch("fast", "nextcloud", "postgres_data", "18", "docker", "PG_VERSION", text="18")
+        touch("fast", "nextcloud", "postgres_data", "18", "docker", "postgresql.conf")
+        touch("fast", "immich", "pgData", "PG_VERSION", text="16")
+        touch("fast", "immich", "pgData", "postgresql.conf")
+        touch("big", "nextcloud", "data", ".ncdata", text="# Nextcloud data directory")
+        touch("big", "nextcloud", "data", "appdata_oc4b2x9z", "preview", "x")
+        touch("big", "nextcloud", "data", "appdata_ocold1234", "x")  # left from an earlier install
+        r = lambda *p: os.path.realpath(os.path.join(core.NAS_DIR, *p))  # noqa: E731
+        self.html, self.db, self.data = r("fast", "nextcloud", "html"), r("fast", "nextcloud", "postgres_data", "18", "docker"), \
+            r("big", "nextcloud", "data")
+        self.sources = [self.html, r("fast", "nextcloud", "postgres_data"), self.data, r("fast", "immich", "pgData")]
+
+    def test_all_parts_found(self):
+        found = nextcloud.find(self.sources, core.NAS_DIR)
+        self.assertEqual(len(found), 1)
+        inst = found[0]
+        self.assertEqual((inst["html"], inst["data"], inst["db"]), (self.html, self.data, self.db))
+        st, s = core.load_state(), dict(core.settings(), sources=self.sources)
+        self.assertEqual(nextcloud.status(st, s, core.NAS_DIR)[0]["missing"], {})
+
+    def test_files_on_the_other_pool_not_ticked(self):
+        st, s = core.load_state(), dict(core.settings(), sources=self.sources[:2])
+        v = nextcloud.status(st, s, core.NAS_DIR)[0]
+        self.assertEqual(v["inst"]["db"], self.db)
+        self.assertEqual(v["missing"], {"your bros": [
+            "the users' files (not found: not in your folders, and not next to the other parts)"]})
+
+
 class SettingsPage(Tree, WebBase):
     def setUp(self):
         Tree.setUp(self)
